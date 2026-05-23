@@ -58,19 +58,49 @@ def _build_system_prompt(context_chunks: list[dict]) -> str:
     )
 
 
+async def _demo_stream(last_user_msg: str, chunks: list[dict]) -> AsyncGenerator[str, None]:
+    """Simulated response used when no API key is configured."""
+    import asyncio
+
+    if not chunks:
+        reply = (
+            "[DEMO MODE — no API key]\n\n"
+            "No documents are uploaded yet. "
+            "Try uploading a PDF, DOCX, XLSX, or TXT file using the sidebar."
+        )
+    else:
+        sources = ", ".join(sorted({c["source"] for c in chunks}))
+        preview = chunks[0]["text"][:300].replace("\n", " ")
+        reply = (
+            f"[DEMO MODE — no API key]\n\n"
+            f"Your question: \"{last_user_msg}\"\n\n"
+            f"The retrieval system found {len(chunks)} relevant passage(s) from: {sources}\n\n"
+            f"Top passage preview:\n\"{preview}…\"\n\n"
+            "Once you add your ANTHROPIC_API_KEY to the .env file and restart, "
+            "Claude will answer based on this context."
+        )
+
+    for word in reply:
+        yield word
+        await asyncio.sleep(0.008)
+
+
 async def _stream_response(
     messages: list[ChatMessage],
     document_filter: str | None,
 ) -> AsyncGenerator[str, None]:
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    # Use the last user message for retrieval
     last_user_msg = next(
         (m.content for m in reversed(messages) if m.role == "user"), ""
     )
     chunks = query(last_user_msg, n_results=MAX_CONTEXT_CHUNKS, source_filter=document_filter)
-    system_prompt = _build_system_prompt(chunks)
 
+    if not ANTHROPIC_API_KEY:
+        async for token in _demo_stream(last_user_msg, chunks):
+            yield token
+        return
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    system_prompt = _build_system_prompt(chunks)
     api_messages = [{"role": m.role, "content": m.content} for m in messages]
 
     with client.messages.stream(
@@ -126,8 +156,6 @@ async def remove_document(filename: str):
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(500, "ANTHROPIC_API_KEY is not set.")
     if not request.messages:
         raise HTTPException(400, "No messages provided.")
 
