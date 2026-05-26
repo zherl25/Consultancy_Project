@@ -1,32 +1,48 @@
 """Pure-Python vector store using sentence-transformers + numpy. No C++ required."""
 
 import pickle
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from .config import settings
+
 DB_PATH = Path(__file__).parent.parent / "chroma_db" / "store.pkl"
-EMBED_MODEL = "all-MiniLM-L6-v2"
 
 _model: SentenceTransformer | None = None
 
 
-def _get_model() -> SentenceTransformer:
+def init_model() -> None:
+    """Preload the embedding model at startup so the first request isn't slow."""
     global _model
     if _model is None:
-        _model = SentenceTransformer(EMBED_MODEL)
+        _model = SentenceTransformer(settings.embed_model)
+
+
+def _get_model() -> SentenceTransformer:
+    if _model is None:
+        init_model()
     return _model
 
 
-# Store schema: {"docs": [{"id", "text", "source", "chunk_index"}], "embeddings": np.ndarray}
+# Store schema:
+# {
+#   "docs": [{"id", "text", "source", "chunk_index"}],
+#   "embeddings": np.ndarray | None,
+#   "metadata": {filename: {"uploaded_at", "chunk_count", "size_bytes"}}
+# }
 
 def _load() -> dict:
     if DB_PATH.exists():
         with open(DB_PATH, "rb") as f:
-            return pickle.load(f)
-    return {"docs": [], "embeddings": None}
+            data = pickle.load(f)
+            if "metadata" not in data:
+                data["metadata"] = {}
+            return data
+    return {"docs": [], "embeddings": None, "metadata": {}}
 
 
 def _save(store: dict) -> None:
@@ -41,13 +57,12 @@ def _cosine_scores(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     return (matrix / norms) @ q
 
 
-def add_document(filename: str, chunks: list[str]) -> int:
+def add_document(filename: str, chunks: list[str], size_bytes: int = 0) -> int:
     store = _load()
     model = _get_model()
 
-    # Remove existing chunks for this file (upsert behaviour)
-    keep = [d for d in store["docs"] if d["source"] != filename]
     keep_indices = [i for i, d in enumerate(store["docs"]) if d["source"] != filename]
+    keep_docs = [store["docs"][i] for i in keep_indices]
 
     new_docs = [
         {"id": f"{filename}::{i}", "text": c, "source": filename, "chunk_index": i}
@@ -55,15 +70,19 @@ def add_document(filename: str, chunks: list[str]) -> int:
     ]
     new_embeddings = model.encode(chunks, show_progress_bar=False, normalize_embeddings=False)
 
-    all_docs = keep + new_docs
-
+    all_docs = keep_docs + new_docs
     if store["embeddings"] is not None and keep_indices:
-        kept_embeddings = store["embeddings"][keep_indices]
-        all_embeddings = np.vstack([kept_embeddings, new_embeddings])
+        all_embeddings = np.vstack([store["embeddings"][keep_indices], new_embeddings])
     else:
-        all_embeddings = new_embeddings
+        all_embeddings = np.array(new_embeddings)
 
-    _save({"docs": all_docs, "embeddings": all_embeddings})
+    store["metadata"][filename] = {
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        "chunk_count": len(chunks),
+        "size_bytes": size_bytes,
+    }
+
+    _save({"docs": all_docs, "embeddings": all_embeddings, "metadata": store["metadata"]})
     return len(chunks)
 
 
@@ -82,8 +101,7 @@ def query(text: str, n_results: int = 5, source_filter: str | None = None) -> li
         indices = [i for i, d in enumerate(docs) if d["source"] == source_filter]
         if not indices:
             return []
-        sub_emb = embeddings[indices]
-        scores = _cosine_scores(query_vec, sub_emb)
+        scores = _cosine_scores(query_vec, embeddings[indices])
         ranked = sorted(zip(scores, indices), reverse=True)[:n_results]
     else:
         scores = _cosine_scores(query_vec, embeddings)
@@ -95,9 +113,19 @@ def query(text: str, n_results: int = 5, source_filter: str | None = None) -> li
     ]
 
 
-def list_documents() -> list[str]:
+def list_documents() -> list[dict]:
     store = _load()
-    return sorted({d["source"] for d in store["docs"]})
+    sources = sorted({d["source"] for d in store["docs"]})
+    meta = store.get("metadata", {})
+    return [
+        {
+            "filename": s,
+            "uploaded_at": meta.get(s, {}).get("uploaded_at"),
+            "chunk_count": meta.get(s, {}).get("chunk_count", 0),
+            "size_bytes": meta.get(s, {}).get("size_bytes", 0),
+        }
+        for s in sources
+    ]
 
 
 def delete_document(filename: str) -> int:
@@ -109,6 +137,7 @@ def delete_document(filename: str) -> int:
 
     new_docs = [store["docs"][i] for i in keep_indices]
     new_embeddings = store["embeddings"][keep_indices] if keep_indices else None
+    store["metadata"].pop(filename, None)
 
-    _save({"docs": new_docs, "embeddings": new_embeddings})
+    _save({"docs": new_docs, "embeddings": new_embeddings, "metadata": store["metadata"]})
     return removed
