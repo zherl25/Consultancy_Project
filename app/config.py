@@ -8,8 +8,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    anthropic_api_key: str = ""
-    claude_model: str = "claude-opus-4-8"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
     max_tokens: int = 2048
     max_context_chunks: int = 6
     upload_max_mb: int = 50

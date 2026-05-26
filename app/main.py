@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-import anthropic
+import openai
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -120,7 +120,7 @@ async def _demo_stream(user_msg: str, chunks: list[dict]) -> AsyncGenerator[str,
             f"from: `{sources_str}`\n\n"
             f"**Top passage:**\n> {preview}…\n\n"
             f"---\n"
-            f"Add your `ANTHROPIC_API_KEY` to `.env` and restart to get real Claude answers."
+            f"Add your `OPENAI_API_KEY` to `.env` and restart to get real GPT-4o answers."
         )
 
     for char in body:
@@ -131,31 +131,35 @@ async def _demo_stream(user_msg: str, chunks: list[dict]) -> AsyncGenerator[str,
     yield _sse({"type": "done"})
 
 
-async def _claude_stream(
+async def _openai_stream(
     messages: list[ChatMessage], chunks: list[dict]
 ) -> AsyncGenerator[str, None]:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    api_messages = [{"role": m.role, "content": m.content} for m in messages]
+    client = openai.OpenAI(api_key=settings.openai_api_key)
+    api_messages = [{"role": "system", "content": _build_system(chunks)}] + [
+        {"role": m.role, "content": m.content} for m in messages
+    ]
 
     try:
-        with client.messages.stream(
-            model=settings.claude_model,
+        stream = client.chat.completions.create(
+            model=settings.openai_model,
             max_tokens=settings.max_tokens,
-            system=_build_system(chunks),
             messages=api_messages,
-        ) as stream:
-            for text in stream.text_stream:
-                yield _sse({"type": "token", "content": text})
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield _sse({"type": "token", "content": delta})
 
         yield _sse({"type": "sources", "sources": _sources_payload(chunks)})
         yield _sse({"type": "done"})
 
-    except anthropic.AuthenticationError:
-        yield _sse({"type": "error", "message": "Invalid API key — check ANTHROPIC_API_KEY in .env."})
-    except anthropic.RateLimitError:
+    except openai.AuthenticationError:
+        yield _sse({"type": "error", "message": "Invalid API key — check OPENAI_API_KEY in .env."})
+    except openai.RateLimitError:
         yield _sse({"type": "error", "message": "Rate limit reached. Please wait a moment and try again."})
     except Exception as exc:
-        log.exception("Unexpected Claude error")
+        log.exception("Unexpected OpenAI error")
         yield _sse({"type": "error", "message": f"Unexpected error: {exc}"})
 
 
@@ -165,11 +169,11 @@ async def _stream_response(
     user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
     chunks = query(user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
 
-    if not settings.anthropic_api_key:
+    if not settings.openai_api_key:
         async for event in _demo_stream(user_msg, chunks):
             yield event
     else:
-        async for event in _claude_stream(messages, chunks):
+        async for event in _openai_stream(messages, chunks):
             yield event
 
 
@@ -179,8 +183,8 @@ async def _stream_response(
 async def health():
     return {
         "status": "ok",
-        "model": settings.claude_model,
-        "demo_mode": not bool(settings.anthropic_api_key),
+        "model": settings.openai_model,
+        "demo_mode": not bool(settings.openai_api_key),
     }
 
 
