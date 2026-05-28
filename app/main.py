@@ -32,7 +32,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     log.info("Loading embedding model (%s)…", settings.embed_model)
     init_model()
-    log.info("Embedding model ready. Demo mode: %s", not bool(settings.anthropic_api_key))
+    log.info("Embedding model ready. Demo mode: %s", not bool(settings.openai_api_key))
     yield
     log.info("Shutting down.")
 
