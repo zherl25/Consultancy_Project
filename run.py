@@ -1,4 +1,10 @@
 """Entry point — run with: python run.py"""
+import os
+
+# Use cached model without contacting HuggingFace
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 import uvicorn
 
 if __name__ == "__main__":
