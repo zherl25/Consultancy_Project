@@ -21,8 +21,7 @@ from .vector_store import add_document, delete_document, init_model, list_docume
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  [%(request_id)s]  %(name)s — %(message)s",
-    defaults={"request_id": "-"},
+    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
 )
 log = logging.getLogger(__name__)
 
