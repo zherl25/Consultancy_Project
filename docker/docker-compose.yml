@@ -1,0 +1,103 @@
+# ════════════════════════════════════════════════════════════
+#  Consultant AI — Docker Compose
+#
+#  Services
+#  ────────
+#  backend   FastAPI  (API-only, not exposed externally)
+#  frontend  nginx    (static files + reverse proxy to backend)
+#
+#  Quick start
+#  ───────────
+#  1. Copy the project-root .env.example → .env and add your key:
+#       OPENAI_API_KEY=sk-...
+#
+#  2. Build and start (from the project root):
+#       docker compose -f docker/docker-compose.yml up --build
+#
+#     Or from inside the docker/ folder:
+#       docker compose up --build
+#
+#  3. Open http://localhost in your browser.
+#
+#  Useful commands
+#  ───────────────
+#  Tail logs:          docker compose -f docker/docker-compose.yml logs -f
+#  Stop everything:    docker compose -f docker/docker-compose.yml down
+#  Wipe document data: docker volume rm docker_vector_data
+# ════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Backend: FastAPI / RAG API ────────────────────────────────────────────────
+  backend:
+    build:
+      context: ..                        # project root as build context
+      dockerfile: docker/Dockerfile.backend
+    image: consultant-ai-backend:latest
+    container_name: consultant-ai-backend
+
+    # Not exposed to the host — only the frontend nginx talks to it.
+    expose:
+      - "8000"
+
+    # Load settings from the project-root .env file.
+    # required: false → starts in demo mode if .env doesn't exist yet.
+    env_file:
+      - path: ../.env
+        required: false
+
+    environment:
+      SERVE_STATIC: "false"              # nginx owns the frontend
+
+    volumes:
+      # Named volume for the vector store pickle — survives container rebuilds.
+      - vector_data:/app/chroma_db
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: >
+        python -c "
+        import urllib.request, sys;
+        urllib.request.urlopen('http://localhost:8000/health');
+        sys.exit(0)"
+      interval: 30s
+      timeout: 10s
+      start_period: 90s    # model load can take up to ~60 s on first boot
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Frontend: nginx (static files + API reverse proxy) ───────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    image: consultant-ai-frontend:latest
+    container_name: consultant-ai-frontend
+
+    ports:
+      - "80:80"                          # http://localhost
+
+    depends_on:
+      backend:
+        condition: service_healthy       # wait until backend passes health check
+
+    restart: unless-stopped
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  vector_data:
+    driver: local
+    # To inspect the stored data:
+    #   docker run --rm -v docker_vector_data:/data alpine ls /data

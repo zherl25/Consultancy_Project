@@ -1,0 +1,17 @@
+# ════════════════════════════════════════════════════════════
+#  Consultant AI — Frontend (nginx static server + API proxy)
+#  Build context: project root  (set in docker-compose.yml)
+# ════════════════════════════════════════════════════════════
+
+FROM nginx:1.27-alpine
+
+# Copy all static assets into the nginx web root.
+# Mirrors the path that FastAPI's StaticFiles mount exposes as /static/.
+COPY app/static/ /usr/share/nginx/html/
+
+# Replace the default nginx site config with ours.
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+# nginx:alpine already sets the correct CMD — no override needed.
