@@ -1,0 +1,49 @@
+name: consultant-ai
+
+services:
+
+  backend:
+    image: consultant-ai-backend-dev:latest
+    container_name: consultant-ai-backend-dev
+    build:
+      context: .
+      dockerfile: docker/backend.dev.Dockerfile
+    expose:
+      - "8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - SERVE_STATIC=false
+    volumes:
+      - .:/app                          # bind-mount source for hot reload
+      - model_cache:/root/.cache/models # named volume shields the model from the bind-mount
+      - vector_data:/app/chroma_db
+    restart: unless-stopped
+    networks:
+      - consultant-ai-network
+
+  frontend:
+    image: consultant-ai-frontend-dev:latest
+    container_name: consultant-ai-frontend-dev
+    build:
+      context: .
+      dockerfile: docker/frontend.dev.Dockerfile
+    ports:
+      - "80:80"
+    volumes:
+      - ./app/static:/usr/share/nginx/html  # bind-mount so UI changes appear instantly
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - consultant-ai-network
+
+volumes:
+  vector_data:
+  model_cache:    # persists the embedding model across dev rebuilds
+
+networks:
+  consultant-ai-network:
+    name: consultant-ai-network
+    driver: bridge

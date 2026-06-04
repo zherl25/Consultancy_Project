@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,7 +26,10 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR   = Path(__file__).parent / "static"
+# When running behind nginx (Docker), set SERVE_STATIC=false so FastAPI skips
+# static-file serving and lets nginx handle it. Defaults to true for local dev.
+SERVE_STATIC = os.getenv("SERVE_STATIC", "true").lower() == "true"
 
 
 # ── Middleware ─────────────────────────────────────────────────────────────────
@@ -68,7 +72,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if SERVE_STATIC and STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ── Global exception handler ───────────────────────────────────────────────────
@@ -220,9 +225,10 @@ async def health():
     }
 
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    return HTMLResponse(content=(STATIC_DIR / "index.html").read_text(encoding="utf-8"))
+if SERVE_STATIC:
+    @app.get("/", response_class=HTMLResponse)
+    async def root():
+        return HTMLResponse(content=(STATIC_DIR / "index.html").read_text(encoding="utf-8"))
 
 
 @app.post("/upload")
