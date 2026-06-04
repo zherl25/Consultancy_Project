@@ -1,0 +1,55 @@
+name: consultant-ai
+
+services:
+
+  backend:
+    image: consultant-ai-backend:latest
+    container_name: consultant-ai-backend
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    expose:
+      - "8000"
+    env_file:
+      - path: .env
+        required: false        # starts in demo mode if .env is absent
+    environment:
+      - SERVE_STATIC=false     # nginx owns the frontend
+    volumes:
+      - vector_data:/app/chroma_db
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        python -c "
+        import urllib.request, sys;
+        urllib.request.urlopen('http://localhost:8000/health');
+        sys.exit(0)"
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+    networks:
+      - consultant-ai-network
+
+  frontend:
+    image: consultant-ai-frontend:latest
+    container_name: consultant-ai-frontend
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - consultant-ai-network
+
+volumes:
+  vector_data:
+
+networks:
+  consultant-ai-network:
+    name: consultant-ai-network
+    driver: bridge
