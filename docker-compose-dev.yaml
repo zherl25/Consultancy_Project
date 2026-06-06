@@ -32,7 +32,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./app/static:/usr/share/nginx/html  # bind-mount so UI changes appear instantly
+      - ./backend/static:/usr/share/nginx/html  # bind-mount so UI changes appear instantly
     depends_on:
       - backend
     restart: unless-stopped
