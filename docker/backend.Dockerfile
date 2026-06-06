@@ -69,7 +69,7 @@ import urllib.request, sys; \
 urllib.request.urlopen('http://localhost:8000/health'); \
 sys.exit(0)" || exit 1
 
-CMD ["python", "-m", "uvicorn", "app.main:app", \
+CMD ["python", "-m", "uvicorn", "backend.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--workers", "1"]

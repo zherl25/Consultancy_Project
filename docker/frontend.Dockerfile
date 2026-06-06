@@ -5,7 +5,7 @@
 FROM nginx:1.27-alpine
 
 # Bake static assets into the image
-COPY app/static/ /usr/share/nginx/html/
+COPY backend/static/ /usr/share/nginx/html/
 
 # Apply our site config (replaces nginx default)
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

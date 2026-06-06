@@ -35,7 +35,7 @@ ENV HF_HUB_OFFLINE=1 \
 EXPOSE 8000
 
 # --reload watches for source changes in the bind-mounted volume
-CMD ["python", "-m", "uvicorn", "app.main:app", \
+CMD ["python", "-m", "uvicorn", "backend.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--reload"]
