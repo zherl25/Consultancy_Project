@@ -8,15 +8,16 @@ from typing import Any
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from .config import settings
+from ..config import settings
 
-DB_PATH = Path(__file__).parent.parent / "chroma_db" / "store.pkl"
+# Resolves to <project_root>/chroma_db/store.pkl in both local and Docker environments.
+DB_PATH = Path(__file__).parent.parent.parent / "chroma_db" / "store.pkl"
 
 _model: SentenceTransformer | None = None
 
 
 def init_model() -> None:
-    """Preload the embedding model at startup so the first request isn't slow."""
+    """Preload the embedding model at startup so the first request is not slow."""
     global _model
     if _model is None:
         _model = SentenceTransformer(settings.embed_model)
@@ -30,9 +31,9 @@ def _get_model() -> SentenceTransformer:
 
 # Store schema:
 # {
-#   "docs": [{"id", "text", "source", "chunk_index"}],
+#   "docs":       [{"id", "text", "source", "chunk_index"}],
 #   "embeddings": np.ndarray | None,
-#   "metadata": {filename: {"uploaded_at", "chunk_count", "size_bytes"}}
+#   "metadata":   {filename: {"uploaded_at", "chunk_count", "size_bytes"}}
 # }
 
 def _load() -> dict:
@@ -62,7 +63,7 @@ def add_document(filename: str, chunks: list[str], size_bytes: int = 0) -> int:
     model = _get_model()
 
     keep_indices = [i for i, d in enumerate(store["docs"]) if d["source"] != filename]
-    keep_docs = [store["docs"][i] for i in keep_indices]
+    keep_docs    = [store["docs"][i] for i in keep_indices]
 
     new_docs = [
         {"id": f"{filename}::{i}", "text": c, "source": filename, "chunk_index": i}
@@ -79,7 +80,7 @@ def add_document(filename: str, chunks: list[str], size_bytes: int = 0) -> int:
     store["metadata"][filename] = {
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
         "chunk_count": len(chunks),
-        "size_bytes": size_bytes,
+        "size_bytes":  size_bytes,
     }
 
     _save({"docs": all_docs, "embeddings": all_embeddings, "metadata": store["metadata"]})
@@ -91,10 +92,10 @@ def query(text: str, n_results: int = 5, source_filter: str | None = None) -> li
     if not store["docs"] or store["embeddings"] is None:
         return []
 
-    model = _get_model()
+    model     = _get_model()
     query_vec = model.encode([text], show_progress_bar=False)[0]
 
-    docs = store["docs"]
+    docs       = store["docs"]
     embeddings = store["embeddings"]
 
     if source_filter:
@@ -114,28 +115,28 @@ def query(text: str, n_results: int = 5, source_filter: str | None = None) -> li
 
 
 def list_documents() -> list[dict]:
-    store = _load()
+    store   = _load()
     sources = sorted({d["source"] for d in store["docs"]})
-    meta = store.get("metadata", {})
+    meta    = store.get("metadata", {})
     return [
         {
-            "filename": s,
+            "filename":    s,
             "uploaded_at": meta.get(s, {}).get("uploaded_at"),
             "chunk_count": meta.get(s, {}).get("chunk_count", 0),
-            "size_bytes": meta.get(s, {}).get("size_bytes", 0),
+            "size_bytes":  meta.get(s, {}).get("size_bytes", 0),
         }
         for s in sources
     ]
 
 
 def delete_document(filename: str) -> int:
-    store = _load()
+    store        = _load()
     keep_indices = [i for i, d in enumerate(store["docs"]) if d["source"] != filename]
-    removed = len(store["docs"]) - len(keep_indices)
+    removed      = len(store["docs"]) - len(keep_indices)
     if removed == 0:
         return 0
 
-    new_docs = [store["docs"][i] for i in keep_indices]
+    new_docs       = [store["docs"][i] for i in keep_indices]
     new_embeddings = store["embeddings"][keep_indices] if keep_indices else None
     store["metadata"].pop(filename, None)
 
