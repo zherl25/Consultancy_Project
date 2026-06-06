@@ -1,5 +1,6 @@
 """Document management: upload, list, and delete."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from .processor import process_document
 log = logging.getLogger(__name__)
 
 
-def upload(filename: str, file_bytes: bytes) -> UploadResponse:
+async def upload(filename: str, file_bytes: bytes) -> UploadResponse:
     suffix = Path(filename).suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise UnsupportedFileTypeError(
@@ -24,19 +25,18 @@ def upload(filename: str, file_bytes: bytes) -> UploadResponse:
     if len(file_bytes) > max_bytes:
         raise FileTooLargeError(f"File exceeds the {settings.upload_max_mb} MB limit.")
 
-    chunks     = process_document(filename, file_bytes)
-    num_chunks = vs.add_document(filename, chunks, size_bytes=len(file_bytes))
+    chunks     = await asyncio.to_thread(process_document, filename, file_bytes)
+    num_chunks = await asyncio.to_thread(vs.add_document, filename, chunks, size_bytes=len(file_bytes))
     return UploadResponse(filename=filename, chunks_indexed=num_chunks, size_bytes=len(file_bytes))
 
 
-def list_all() -> DocumentListResponse:
-    return DocumentListResponse(
-        documents=[DocumentInfo(**doc) for doc in vs.list_documents()]
-    )
+async def list_all() -> DocumentListResponse:
+    docs = await asyncio.to_thread(vs.list_documents)
+    return DocumentListResponse(documents=[DocumentInfo(**doc) for doc in docs])
 
 
-def delete(filename: str) -> DeleteResponse:
-    removed = vs.delete_document(filename)
+async def delete(filename: str) -> DeleteResponse:
+    removed = await asyncio.to_thread(vs.delete_document, filename)
     if removed == 0:
         raise DocumentNotFoundError(f"Document '{filename}' not found.")
     return DeleteResponse(filename=filename, chunks_removed=removed)

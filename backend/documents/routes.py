@@ -22,7 +22,7 @@ router = APIRouter(tags=["documents"])
 async def upload_document(request: Request, file: UploadFile = File(...)):
     file_bytes = await file.read()
     try:
-        result = services.upload(file.filename, file_bytes)
+        result = await services.upload(file.filename, file_bytes)
     except (UnsupportedFileTypeError, FileTooLargeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except DocumentProcessingError as exc:
@@ -39,13 +39,13 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
 @router.get("/documents", response_model=DocumentListResponse)
 async def get_documents():
-    return services.list_all()
+    return await services.list_all()
 
 
 @router.delete("/documents/{filename:path}", response_model=DeleteResponse)
 async def remove_document(filename: str, request: Request):
     try:
-        result = services.delete(filename)
+        result = await services.delete(filename)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

@@ -14,13 +14,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
 from .chat.routes import router as chat_router
+from .core.logging import setup_logging
 from .documents.routes import router as documents_router
 from .vector_store.store import init_model
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
-)
+setup_logging()
 log = logging.getLogger(__name__)
 
 STATIC_DIR   = Path(__file__).parent / "static"

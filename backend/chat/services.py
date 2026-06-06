@@ -1,5 +1,6 @@
 """Chat response streaming: RAG retrieval + OpenAI / demo."""
 
+import asyncio
 import json
 import logging
 from typing import AsyncGenerator
@@ -80,20 +81,20 @@ async def _demo_stream(user_msg: str, chunks: list[dict]) -> AsyncGenerator[str,
 async def _openai_stream(
     messages: list[ChatMessage], chunks: list[dict]
 ) -> AsyncGenerator[str, None]:
-    client = openai.OpenAI(api_key=settings.openai_api_key)
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
 
     api_messages = [{"role": "system", "content": _build_system_prompt(chunks)}] + [
         {"role": m.role, "content": m.content} for m in messages
     ]
 
     try:
-        stream = client.chat.completions.create(
+        stream = await client.chat.completions.create(
             model=settings.openai_model,
             max_tokens=settings.max_tokens,
             messages=api_messages,
             stream=True,
         )
-        for chunk in stream:
+        async for chunk in stream:
             delta = chunk.choices[0].delta.content
             if delta:
                 yield _sse({"type": "token", "content": delta})
@@ -114,7 +115,7 @@ async def stream_response(
     messages: list[ChatMessage], document_filter: str | None
 ) -> AsyncGenerator[str, None]:
     user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
-    chunks   = query(user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
+    chunks   = await asyncio.to_thread(query, user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
 
     if not settings.openai_api_key:
         async for event in _demo_stream(user_msg, chunks):
