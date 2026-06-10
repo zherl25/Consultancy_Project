@@ -1,7 +1,6 @@
 """Document management: upload, list, and delete."""
 
 import asyncio
-import logging
 from pathlib import Path
 
 from ..config import settings
@@ -10,8 +9,6 @@ from ..vector_store import store as vs
 from .exceptions import DocumentNotFoundError, FileTooLargeError, UnsupportedFileTypeError
 from .models import DeleteResponse, DocumentInfo, DocumentListResponse, UploadResponse
 from .processor import process_document
-
-log = logging.getLogger(__name__)
 
 
 async def upload(filename: str, file_bytes: bytes) -> UploadResponse:
@@ -26,17 +23,17 @@ async def upload(filename: str, file_bytes: bytes) -> UploadResponse:
         raise FileTooLargeError(f"File exceeds the {settings.upload_max_mb} MB limit.")
 
     chunks     = await asyncio.to_thread(process_document, filename, file_bytes)
-    num_chunks = await asyncio.to_thread(vs.add_document, filename, chunks, size_bytes=len(file_bytes))
+    num_chunks = await vs.add_document(filename, chunks, size_bytes=len(file_bytes))
     return UploadResponse(filename=filename, chunks_indexed=num_chunks, size_bytes=len(file_bytes))
 
 
 async def list_all() -> DocumentListResponse:
-    docs = await asyncio.to_thread(vs.list_documents)
+    docs = await vs.list_documents()
     return DocumentListResponse(documents=[DocumentInfo(**doc) for doc in docs])
 
 
 async def delete(filename: str) -> DeleteResponse:
-    removed = await asyncio.to_thread(vs.delete_document, filename)
+    removed = await vs.delete_document(filename)
     if removed == 0:
         raise DocumentNotFoundError(f"Document '{filename}' not found.")
     return DeleteResponse(filename=filename, chunks_removed=removed)

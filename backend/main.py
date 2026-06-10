@@ -1,6 +1,5 @@
 """FastAPI application factory — registers routers, middleware, and startup lifecycle."""
 
-import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -10,19 +9,22 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from loguru import logger
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings
+from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
+from .config import settings
+from .core.limiter import limiter
 from .core.logging import setup_logging
 from .documents.routes import router as documents_router
 from .vector_store.store import init_model
 
 setup_logging()
-log = logging.getLogger(__name__)
 
 STATIC_DIR   = Path(__file__).parent / "static"
-# Set SERVE_STATIC=false when running behind nginx (Docker); defaults true for local dev.
 SERVE_STATIC = os.getenv("SERVE_STATIC", "true").lower() == "true"
 
 
@@ -43,20 +45,19 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Starting '%s' — loading embedding model (%s)…", app.title, settings.embed_model)
-    init_model()
-    log.info(
-        "Ready. model=%s demo_mode=%s",
-        settings.openai_model,
-        not bool(settings.openai_api_key),
-    )
+    logger.info("Starting '{}' — loading embedding model ({})…", app.title, settings.embed_model)
+    await init_model()
+    logger.info("Ready. model={} demo_mode={}", settings.openai_model, not bool(settings.openai_api_key))
     yield
-    log.info("Shutting down.")
+    logger.info("Shutting down.")
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
 app = FastAPI(title="Consultant RAG Chatbot", version="1.0.0", lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
@@ -69,7 +70,7 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    log.error("Unhandled error — %s %s", request.method, request.url.path, exc_info=exc)
+    logger.opt(exception=exc).error("Unhandled error — {} {}", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
         content={"detail": "An unexpected error occurred. Please try again."},
@@ -78,6 +79,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 
+app.include_router(auth_router)
 app.include_router(documents_router)
 app.include_router(chat_router)
 
