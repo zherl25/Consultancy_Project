@@ -1,144 +1,151 @@
-"""Pure-Python vector store using sentence-transformers + numpy. No C++ required."""
+"""Async SQLite vector store — sentence-transformers embeddings, numpy cosine similarity."""
 
-import pickle
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import aiosqlite
 import numpy as np
+from loguru import logger
 from sentence_transformers import SentenceTransformer
 
 from ..config import settings
 
-# Resolves to <project_root>/chroma_db/store.pkl in both local and Docker environments.
-DB_PATH = Path(__file__).parent.parent.parent / "chroma_db" / "store.pkl"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "store.db"
 
 _model: SentenceTransformer | None = None
 
+_SQL_CREATE_CHUNKS = """
+CREATE TABLE IF NOT EXISTS chunks (
+    id          TEXT PRIMARY KEY,
+    source      TEXT    NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text        TEXT    NOT NULL,
+    embedding   BLOB    NOT NULL
+)
+"""
+_SQL_CREATE_DOCUMENTS = """
+CREATE TABLE IF NOT EXISTS documents (
+    filename    TEXT PRIMARY KEY,
+    uploaded_at TEXT    NOT NULL,
+    chunk_count INTEGER NOT NULL,
+    size_bytes  INTEGER NOT NULL
+)
+"""
+_SQL_CREATE_IDX = "CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks (source)"
 
-def init_model() -> None:
-    """Preload the embedding model at startup so the first request is not slow."""
+
+async def _init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute(_SQL_CREATE_CHUNKS)
+        await db.execute(_SQL_CREATE_DOCUMENTS)
+        await db.execute(_SQL_CREATE_IDX)
+        await db.commit()
+
+
+async def init_model() -> None:
+    """Load the embedding model and initialise the database schema."""
     global _model
     if _model is None:
-        _model = SentenceTransformer(settings.embed_model)
+        logger.info("Loading embedding model: {}", settings.embed_model)
+        _model = await asyncio.to_thread(SentenceTransformer, settings.embed_model)
+    await _init_db()
 
 
 def _get_model() -> SentenceTransformer:
     if _model is None:
-        init_model()
+        raise RuntimeError("Embedding model not initialised — call init_model() at startup.")
     return _model
 
 
-# Store schema:
-# {
-#   "docs":       [{"id", "text", "source", "chunk_index"}],
-#   "embeddings": np.ndarray | None,
-#   "metadata":   {filename: {"uploaded_at", "chunk_count", "size_bytes"}}
-# }
-
-def _load() -> dict:
-    if DB_PATH.exists():
-        with open(DB_PATH, "rb") as f:
-            data = pickle.load(f)
-            if "metadata" not in data:
-                data["metadata"] = {}
-            return data
-    return {"docs": [], "embeddings": None, "metadata": {}}
-
-
-def _save(store: dict) -> None:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(DB_PATH, "wb") as f:
-        pickle.dump(store, f)
-
-
 def _cosine_scores(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    q = query_vec / (np.linalg.norm(query_vec) + 1e-10)
+    q     = query_vec / (np.linalg.norm(query_vec) + 1e-10)
     norms = np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-10
     return (matrix / norms) @ q
 
 
-def add_document(filename: str, chunks: list[str], size_bytes: int = 0) -> int:
-    store = _load()
-    model = _get_model()
+async def add_document(filename: str, chunks: list[str], *, size_bytes: int = 0) -> int:
+    model: SentenceTransformer = _get_model()
+    embeddings: np.ndarray = await asyncio.to_thread(
+        model.encode, chunks, show_progress_bar=False, normalize_embeddings=False
+    )
 
-    keep_indices = [i for i, d in enumerate(store["docs"]) if d["source"] != filename]
-    keep_docs    = [store["docs"][i] for i in keep_indices]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("DELETE FROM chunks WHERE source = ?", (filename,))
+        await db.executemany(
+            "INSERT INTO chunks (id, source, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?)",
+            [
+                (f"{filename}::{i}", filename, i, text, embeddings[i].astype(np.float32).tobytes())
+                for i, text in enumerate(chunks)
+            ],
+        )
+        await db.execute(
+            """INSERT OR REPLACE INTO documents (filename, uploaded_at, chunk_count, size_bytes)
+               VALUES (?, ?, ?, ?)""",
+            (filename, datetime.now(timezone.utc).isoformat(), len(chunks), size_bytes),
+        )
+        await db.commit()
 
-    new_docs = [
-        {"id": f"{filename}::{i}", "text": c, "source": filename, "chunk_index": i}
-        for i, c in enumerate(chunks)
-    ]
-    new_embeddings = model.encode(chunks, show_progress_bar=False, normalize_embeddings=False)
-
-    all_docs = keep_docs + new_docs
-    if store["embeddings"] is not None and keep_indices:
-        all_embeddings = np.vstack([store["embeddings"][keep_indices], new_embeddings])
-    else:
-        all_embeddings = np.array(new_embeddings)
-
-    store["metadata"][filename] = {
-        "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        "chunk_count": len(chunks),
-        "size_bytes":  size_bytes,
-    }
-
-    _save({"docs": all_docs, "embeddings": all_embeddings, "metadata": store["metadata"]})
     return len(chunks)
 
 
-def query(text: str, n_results: int = 5, source_filter: str | None = None) -> list[dict[str, Any]]:
-    store = _load()
-    if not store["docs"] or store["embeddings"] is None:
+async def query(
+    text: str, n_results: int = 5, source_filter: str | None = None
+) -> list[dict[str, Any]]:
+    model     = _get_model()
+    query_vec = (await asyncio.to_thread(model.encode, [text], show_progress_bar=False))[0]
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        if source_filter:
+            cursor = await db.execute(
+                "SELECT source, text, embedding FROM chunks WHERE source = ?", (source_filter,)
+            )
+        else:
+            cursor = await db.execute("SELECT source, text, embedding FROM chunks")
+        rows = await cursor.fetchall()
+
+    if not rows:
         return []
 
-    model     = _get_model()
-    query_vec = model.encode([text], show_progress_bar=False)[0]
+    sources    = [r[0] for r in rows]
+    texts      = [r[1] for r in rows]
+    embeddings = np.array([np.frombuffer(r[2], dtype=np.float32) for r in rows])
 
-    docs       = store["docs"]
-    embeddings = store["embeddings"]
-
-    if source_filter:
-        indices = [i for i, d in enumerate(docs) if d["source"] == source_filter]
-        if not indices:
-            return []
-        scores = _cosine_scores(query_vec, embeddings[indices])
-        ranked = sorted(zip(scores, indices), reverse=True)[:n_results]
-    else:
-        scores = _cosine_scores(query_vec, embeddings)
-        ranked = sorted(zip(scores, range(len(docs))), reverse=True)[:n_results]
+    scores = _cosine_scores(query_vec, embeddings)
+    ranked = sorted(zip(scores, range(len(rows))), reverse=True)[:n_results]
 
     return [
-        {"text": docs[idx]["text"], "source": docs[idx]["source"], "score": float(score)}
+        {"text": texts[idx], "source": sources[idx], "score": float(score)}
         for score, idx in ranked
     ]
 
 
-def list_documents() -> list[dict]:
-    store   = _load()
-    sources = sorted({d["source"] for d in store["docs"]})
-    meta    = store.get("metadata", {})
+async def list_documents() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT filename, uploaded_at, chunk_count, size_bytes FROM documents ORDER BY filename"
+        )
+        rows = await cursor.fetchall()
     return [
-        {
-            "filename":    s,
-            "uploaded_at": meta.get(s, {}).get("uploaded_at"),
-            "chunk_count": meta.get(s, {}).get("chunk_count", 0),
-            "size_bytes":  meta.get(s, {}).get("size_bytes", 0),
-        }
-        for s in sources
+        {"filename": r[0], "uploaded_at": r[1], "chunk_count": r[2], "size_bytes": r[3]}
+        for r in rows
     ]
 
 
-def delete_document(filename: str) -> int:
-    store        = _load()
-    keep_indices = [i for i, d in enumerate(store["docs"]) if d["source"] != filename]
-    removed      = len(store["docs"]) - len(keep_indices)
-    if removed == 0:
-        return 0
-
-    new_docs       = [store["docs"][i] for i in keep_indices]
-    new_embeddings = store["embeddings"][keep_indices] if keep_indices else None
-    store["metadata"].pop(filename, None)
-
-    _save({"docs": new_docs, "embeddings": new_embeddings, "metadata": store["metadata"]})
-    return removed
+async def delete_document(filename: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM chunks WHERE source = ?", (filename,)
+        )
+        count: int = (await cursor.fetchone())[0]
+        if count == 0:
+            return 0
+        await db.execute("DELETE FROM chunks WHERE source = ?", (filename,))
+        await db.execute("DELETE FROM documents WHERE filename = ?", (filename,))
+        await db.commit()
+    return count

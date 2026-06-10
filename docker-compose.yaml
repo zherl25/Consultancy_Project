@@ -16,7 +16,7 @@ services:
     environment:
       - SERVE_STATIC=false     # nginx owns the frontend
     volumes:
-      - vector_data:/app/chroma_db
+      - vector_data:/app/data
     restart: unless-stopped
     healthcheck:
       test: >

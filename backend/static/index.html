@@ -13,6 +13,41 @@
 </head>
 <body>
 
+<!-- ═══════════════════════ LOGIN ═══════════════════════ -->
+<div id="page-login" class="login-page hidden">
+  <div class="orb orb1" aria-hidden="true"></div>
+  <div class="orb orb2" aria-hidden="true"></div>
+
+  <main class="login-card" aria-labelledby="login-heading">
+    <div class="login-logo" aria-hidden="true">
+      <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="10" fill="url(#llg)"/>
+        <defs><linearGradient id="llg" x1="0" y1="0" x2="32" y2="32">
+          <stop stop-color="#3b82f6"/><stop offset="1" stop-color="#7c3aed"/>
+        </linearGradient></defs>
+        <path d="M7 23l4.5-9 5 7 4-5.5 4 7.5" stroke="white" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="login-logo-text">Consultant AI</span>
+    </div>
+
+    <h1 id="login-heading" class="login-heading">Welcome back</h1>
+    <p class="login-sub">Sign in to your workspace</p>
+
+    <form id="login-form" novalidate>
+      <div class="login-field">
+        <label for="login-username">Username</label>
+        <input type="text" id="login-username" autocomplete="username" placeholder="Enter username" required />
+      </div>
+      <div class="login-field">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" autocomplete="current-password" placeholder="Enter password" required />
+      </div>
+      <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
+      <button type="submit" id="login-btn" class="login-btn">Sign in</button>
+    </form>
+  </main>
+</div>
+
 <!-- ═══════════════════════ LANDING ═══════════════════════ -->
 <div id="page-landing">
   <div class="orb orb1" aria-hidden="true"></div>
@@ -105,6 +140,7 @@
     <div class="nav-sp" aria-hidden="true"></div>
     <a href="#docs" class="nav-a active" aria-current="page">Documents</a>
     <a href="#chat" class="nav-a">Chat</a>
+    <button class="nav-logout" data-logout aria-label="Sign out">Sign out</button>
   </nav>
 
   <main class="docs-body">
@@ -168,6 +204,12 @@
     <div id="sess-list" role="list" aria-label="Chat history"></div>
 
     <div class="ss-foot">
+      <button class="ss-logout" data-logout aria-label="Sign out">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Sign out
+      </button>
       <a href="#docs" aria-label="Manage uploaded documents">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M9 12h6M9 16h6M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/>

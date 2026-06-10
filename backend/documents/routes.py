@@ -1,9 +1,10 @@
 """Document upload, listing, and deletion endpoints."""
 
-import logging
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from loguru import logger
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
-
+from ..auth.services import get_current_user
+from ..core.limiter import limiter
 from . import services
 from .exceptions import (
     DocumentNotFoundError,
@@ -13,13 +14,16 @@ from .exceptions import (
 )
 from .models import DeleteResponse, DocumentListResponse, UploadResponse
 
-log = logging.getLogger(__name__)
-
 router = APIRouter(tags=["documents"])
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_document(request: Request, file: UploadFile = File(...)):
+@limiter.limit("20/minute")
+async def upload_document(
+    request: Request,
+    file: UploadFile = File(...),
+    _: str = Depends(get_current_user),
+):
     file_bytes = await file.read()
     try:
         result = await services.upload(file.filename, file_bytes)
@@ -28,8 +32,8 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     except DocumentProcessingError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    log.info(
-        "Indexed '%s': %d chunks  [%s]",
+    logger.info(
+        "Indexed '{}': {} chunks  [{}]",
         result.filename,
         result.chunks_indexed,
         getattr(request.state, "request_id", "-"),
@@ -38,19 +42,25 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
 
 
 @router.get("/documents", response_model=DocumentListResponse)
-async def get_documents():
+@limiter.limit("60/minute")
+async def get_documents(request: Request, _: str = Depends(get_current_user)):  # noqa: ARG001
     return await services.list_all()
 
 
 @router.delete("/documents/{filename:path}", response_model=DeleteResponse)
-async def remove_document(filename: str, request: Request):
+@limiter.limit("20/minute")
+async def remove_document(
+    filename: str,
+    request: Request,
+    _: str = Depends(get_current_user),
+):
     try:
         result = await services.delete(filename)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    log.info(
-        "Deleted '%s': %d chunks removed  [%s]",
+    logger.info(
+        "Deleted '{}': {} chunks removed  [{}]",
         result.filename,
         result.chunks_removed,
         getattr(request.state, "request_id", "-"),

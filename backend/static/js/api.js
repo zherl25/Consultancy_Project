@@ -24,13 +24,34 @@ export class ApiClient {
   /** @param {string} [baseUrl] Defaults to the current origin. */
   constructor(baseUrl = '') {
     this._base = baseUrl;
+    /** Set by main.js — called whenever the server returns 401. */
+    this.onUnauthorized = null;
+  }
+
+  // ── Auth ─────────────────────────────────────────────────
+
+  /**
+   * Exchange credentials for a JWT.
+   * @param {string} username
+   * @param {string} password
+   * @returns {Promise<{ access_token: string, token_type: string }>}
+   */
+  async login(username, password) {
+    const res = await fetch(`${this._base}/auth/login`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ username, password }),
+    });
+    if (!res.ok) await this._reject(res);
+    return res.json();
   }
 
   // ── Documents ────────────────────────────────────────────
 
   /** @returns {Promise<Document[]>} */
   async getDocuments() {
-    const res = await fetch(`${this._base}/documents`);
+    const res = await fetch(`${this._base}/documents`, { headers: this._authHeader() });
+    if (res.status === 401) { this._handleUnauth(); return []; }
     if (!res.ok) await this._reject(res);
     return (await res.json()).documents;
   }
@@ -52,6 +73,11 @@ export class ApiClient {
       });
 
       xhr.addEventListener('load', () => {
+        if (xhr.status === 401) {
+          this._handleUnauth();
+          reject(new ApiError('Session expired — please sign in again.', 401));
+          return;
+        }
         const body = this._parseJson(xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve(body);
@@ -64,6 +90,8 @@ export class ApiClient {
       xhr.addEventListener('abort', () => reject(new ApiError('Upload cancelled', 0)));
 
       xhr.open('POST', `${this._base}/upload`);
+      const token = localStorage.getItem('consultant_ai_token');
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.send(form);
     });
   }
@@ -75,8 +103,9 @@ export class ApiClient {
   async deleteDocument(filename) {
     const res = await fetch(
       `${this._base}/documents/${encodeURIComponent(filename)}`,
-      { method: 'DELETE' },
+      { method: 'DELETE', headers: this._authHeader() },
     );
+    if (res.status === 401) { this._handleUnauth(); return; }
     if (!res.ok) await this._reject(res);
     return res.json();
   }
@@ -103,10 +132,12 @@ export class ApiClient {
       try {
         const res = await fetch(`${this._base}/chat`, {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
           body:    JSON.stringify({ messages, document_filter: documentFilter }),
           signal:  controller.signal,
         });
+
+        if (res.status === 401) { this._handleUnauth(); return; }
 
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -126,6 +157,18 @@ export class ApiClient {
   }
 
   // ── Private helpers ───────────────────────────────────────
+
+  /** Build Authorization header from stored token. */
+  _authHeader() {
+    const token = localStorage.getItem('consultant_ai_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  /** Clear token and invoke the 401 callback wired up by main.js. */
+  _handleUnauth() {
+    localStorage.removeItem('consultant_ai_token');
+    this.onUnauthorized?.();
+  }
 
   /** Read an SSE stream and dispatch events to callbacks. */
   async _readSSE(body, callbacks) {

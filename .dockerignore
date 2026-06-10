@@ -22,6 +22,7 @@ ENV
 
 # ── Runtime data (stored in named Docker volumes, not the image) ──
 chroma_db/
+data/
 
 # ── Model cache (baked into the backend image during build) ──
 # Exclude any local .cache dir so it doesn't override the image-level cache.

@@ -2,16 +2,14 @@
 
 import asyncio
 import json
-import logging
 from typing import AsyncGenerator
 
 import openai
+from loguru import logger
 
 from ..config import settings
 from ..vector_store.store import query
 from .models import ChatMessage
-
-log = logging.getLogger(__name__)
 
 
 def _sse(data: dict) -> str:
@@ -49,8 +47,6 @@ def _build_system_prompt(chunks: list[dict]) -> str:
 
 
 async def _demo_stream(user_msg: str, chunks: list[dict]) -> AsyncGenerator[str, None]:
-    import asyncio
-
     if not chunks:
         body = (
             "**Demo mode** — no API key is configured yet.\n\n"
@@ -107,7 +103,7 @@ async def _openai_stream(
     except openai.RateLimitError:
         yield _sse({"type": "error", "message": "Rate limit reached. Please wait a moment and try again."})
     except openai.APIError as exc:
-        log.error("OpenAI API error: %s", exc)
+        logger.error("OpenAI API error: {}", exc)
         yield _sse({"type": "error", "message": f"OpenAI error: {exc}"})
 
 
@@ -115,7 +111,7 @@ async def stream_response(
     messages: list[ChatMessage], document_filter: str | None
 ) -> AsyncGenerator[str, None]:
     user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
-    chunks   = await asyncio.to_thread(query, user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
+    chunks   = await query(user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
 
     if not settings.openai_api_key:
         async for event in _demo_stream(user_msg, chunks):
