@@ -18,7 +18,7 @@ services:
     volumes:
       - .:/app                          # bind-mount source for hot reload
       - model_cache:/root/.cache/models # named volume shields the model from the bind-mount
-      - vector_data:/app/chroma_db
+      - vector_data:/app/data
     restart: unless-stopped
     networks:
       - consultant-ai-network

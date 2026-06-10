@@ -43,7 +43,7 @@ async def upload_document(
 
 @router.get("/documents", response_model=DocumentListResponse)
 @limiter.limit("60/minute")
-async def get_documents(_request: Request, _: str = Depends(get_current_user)):
+async def get_documents(request: Request, _: str = Depends(get_current_user)):  # noqa: ARG001
     return await services.list_all()
 
 
