@@ -13,12 +13,6 @@ import { LandingPage } from './pages/landing.js';
 import { DocsPage }    from './pages/docs.js';
 import { ChatPage }    from './pages/chat.js';
 
-// ── Auth guard ────────────────────────────────────────────
-// Redirect to login immediately so the router starts on the right page.
-if (!localStorage.getItem('consultant_ai_token')) {
-  window.location.hash = '#login';
-}
-
 // ── Dependency construction ───────────────────────────────
 const api      = new ApiClient();
 const toast    = new Toast(document.getElementById('toasts'));
@@ -55,8 +49,8 @@ docs.onChatAbout = (filename) => {
 const router = new Router()
   .add('#login', login)
   .add('#',      landing)
-  .add('#docs',  docs)
-  .add('#chat',  chat)
+  .add('#docs',  docs, { requiresAuth: true })
+  .add('#chat',  chat, { requiresAuth: true })
   .start();
 
 // Wire login success now that router exists
