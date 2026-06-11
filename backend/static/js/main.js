@@ -24,7 +24,10 @@ const docs    = new DocsPage({ api, toast });
 const chat    = new ChatPage({ api, toast, sessions });
 
 // ── 401 handler — redirect to login on expired token ──────
-api.onUnauthorized = () => { window.location.hash = '#login'; };
+api.onUnauthorized = () => {
+  toast.show('Your session has expired — please sign in again.', 'error');
+  window.location.hash = '#login';
+};
 
 // ── Logout wiring ─────────────────────────────────────────
 function logout() {
@@ -53,5 +56,11 @@ const router = new Router()
   .add('#chat',  chat, { requiresAuth: true })
   .start();
 
-// Wire login success now that router exists
-login.onSuccess = () => router.navigate('#');
+router.onAuthRequired = () => toast.show('Please sign in to continue.', 'info');
+
+// After login, return to the page the user was trying to reach (default: docs)
+login.onSuccess = () => {
+  const dest = router.returnHash ?? '#docs';
+  router.clearReturnHash();
+  router.navigate(dest);
+};

@@ -7,8 +7,12 @@
  *   leave()          — called when navigating AWAY (cleanup: cancel requests, remove listeners)
  */
 export class Router {
-  #routes = [];
-  #active = null;
+  #routes     = [];
+  #active     = null;
+  #returnHash = null;
+
+  /** Called when a protected route is accessed without a token. Set by main.js. */
+  onAuthRequired = null;
 
   /**
    * Register a route.
@@ -33,6 +37,10 @@ export class Router {
     window.location.hash = hash;
   }
 
+  /** The hash the user was trying to reach before being sent to login. */
+  get returnHash() { return this.#returnHash; }
+  clearReturnHash() { this.#returnHash = null; }
+
   // ── Private ───────────────────────────────────────────────
 
   #dispatch() {
@@ -41,6 +49,8 @@ export class Router {
     if (!route || this.#active?.controller === route.controller) return;
 
     if (route.options?.requiresAuth && !localStorage.getItem('consultant_ai_token')) {
+      this.#returnHash = hash;
+      this.onAuthRequired?.();
       window.location.hash = '#login';
       return;
     }
