@@ -114,10 +114,20 @@ export class ChatPage {
           <div class="si-name" title="${sanitize(s.name)}">${sanitize(s.name)}</div>
           <div class="si-meta">${formatDate(s.updatedAt)}${msgCount ? ` · ${msgCount} msg${msgCount !== 1 ? 's' : ''}` : ''}</div>
         </div>
+        <button class="si-edit" aria-label="Rename session ${sanitize(s.name)}">
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button class="si-del" aria-label="Delete session ${sanitize(s.name)}">×</button>`;
 
       item.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('si-del')) this.#activateSession(s.id);
+        if (!e.target.closest('.si-del') && !e.target.closest('.si-edit')) this.#activateSession(s.id);
+      });
+      item.querySelector('.si-edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.#startRename(s.id, item.querySelector('.si-name'));
       });
       item.querySelector('.si-del').addEventListener('click', (e) => {
         e.stopPropagation();
@@ -126,6 +136,41 @@ export class ChatPage {
 
       container.appendChild(item);
     });
+  }
+
+  #startRename(id, nameEl) {
+    const session = this.#sessions.findById(id);
+    if (!session) return;
+    const original = session.name;
+
+    const input = document.createElement('input');
+    input.className = 'si-rename-input';
+    input.type      = 'text';
+    input.value     = original;
+
+    const commit = () => {
+      const next = input.value.trim() || original;
+      if (next !== original) {
+        this.#sessions.update(id, { name: next });
+        if (id === this.#sessionId) {
+          document.getElementById('sess-title').textContent = next;
+        }
+      } else {
+        this.#renderSessionList();
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = original; input.blur(); }
+    });
+    input.addEventListener('click',  (e) => e.stopPropagation());
+    input.addEventListener('blur', commit);
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
   }
 
   #deleteSession(id) {
@@ -194,7 +239,14 @@ export class ChatPage {
     el.innerHTML = '';
 
     if (!this.#conversation.length) {
-      el.innerHTML = '<div class="sys-msg">Ask a question to get started.</div>';
+      if (!this.#docs.length) {
+        el.innerHTML = `<div class="sys-msg">
+          No documents uploaded yet.<br/>
+          <a href="#docs" class="sys-link">Upload files in Documents →</a>
+        </div>`;
+      } else {
+        el.innerHTML = '<div class="sys-msg">Ask a question about your documents.</div>';
+      }
       return;
     }
 
