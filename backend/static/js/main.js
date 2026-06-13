@@ -18,6 +18,12 @@ const api      = new ApiClient();
 const toast    = new Toast(document.getElementById('toasts'));
 const sessions = new SessionStore();
 
+// Silently clear any stale/expired token before the user interacts.
+// Runs in the background — landing page shows immediately without waiting.
+if (localStorage.getItem('consultant_ai_token')) {
+  api.me().catch(() => localStorage.removeItem('consultant_ai_token'));
+}
+
 const login   = new LoginPage({ api });
 const landing = new LandingPage();
 const docs    = new DocsPage({ api, toast });
@@ -55,8 +61,6 @@ const router = new Router()
   .add('#docs',  docs, { requiresAuth: true })
   .add('#chat',  chat, { requiresAuth: true })
   .start();
-
-router.onAuthRequired = () => toast.show('Please sign in to continue.', 'info');
 
 // After login, return to the page the user was trying to reach (default: docs)
 login.onSuccess = () => {
