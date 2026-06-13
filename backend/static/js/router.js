@@ -7,16 +7,21 @@
  *   leave()          — called when navigating AWAY (cleanup: cancel requests, remove listeners)
  */
 export class Router {
-  #routes = [];
-  #active = null;
+  #routes     = [];
+  #active     = null;
+  #returnHash = null;
+
+  /** Called when a protected route is accessed without a token. Set by main.js. */
+  onAuthRequired = null;
 
   /**
    * Register a route.
    * @param {string} prefix  e.g. '#docs' — matched as exact or as a prefix with '/'
    * @param {{ pageId: string, enter?: () => void | Promise<void>, leave?: () => void }} controller
+   * @param {{ requiresAuth?: boolean }} [options]
    */
-  add(prefix, controller) {
-    this.#routes.push({ prefix, controller });
+  add(prefix, controller, options = {}) {
+    this.#routes.push({ prefix, controller, options });
     return this; // fluent
   }
 
@@ -32,12 +37,23 @@ export class Router {
     window.location.hash = hash;
   }
 
+  /** The hash the user was trying to reach before being sent to login. */
+  get returnHash() { return this.#returnHash; }
+  clearReturnHash() { this.#returnHash = null; }
+
   // ── Private ───────────────────────────────────────────────
 
   #dispatch() {
     const hash  = window.location.hash || '#';
     const route = this.#resolveRoute(hash);
     if (!route || this.#active?.controller === route.controller) return;
+
+    if (route.options?.requiresAuth && !localStorage.getItem('consultant_ai_token')) {
+      this.#returnHash = hash;
+      this.onAuthRequired?.();
+      window.location.hash = '#login';
+      return;
+    }
 
     this.#active?.controller?.leave?.();
     this.#active = route;

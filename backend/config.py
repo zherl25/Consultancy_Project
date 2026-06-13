@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,14 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
+
+    @field_validator("openai_api_key", mode="before")
+    @classmethod
+    def _strip_placeholder_key(cls, v: str) -> str:
+        """Treat example/placeholder values as empty so demo mode activates correctly."""
+        if not v or "your-key-here" in v or v == "sk-...":
+            return ""
+        return v
     openai_model: str = "gpt-4o"
     max_tokens: int = 2048
     max_context_chunks: int = 6

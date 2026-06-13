@@ -11,11 +11,17 @@ export class LoginPage {
   }
 
   enter() {
-    this.#form  = document.getElementById('login-form');
-    this.#errEl = document.getElementById('login-error');
-    this.#btn   = document.getElementById('login-btn');
-    this.#form.addEventListener('submit', this.#onSubmit);
-    document.getElementById('login-username')?.focus();
+    if (localStorage.getItem('consultant_ai_token')) {
+      // Token present — validate it; redirect to app if still good, show form if stale.
+      this.#api.me()
+        .then(() => this.#onSuccess())
+        .catch(() => {
+          localStorage.removeItem('consultant_ai_token');
+          this.#setupForm();
+        });
+      return;
+    }
+    this.#setupForm();
   }
 
   leave() {
@@ -29,10 +35,18 @@ export class LoginPage {
   // ── Private ────────────────────────────────────────────────
 
   #api;
-  #form    = null;
-  #errEl   = null;
-  #btn     = null;
+  #form      = null;
+  #errEl     = null;
+  #btn       = null;
   #onSuccess = () => {};
+
+  #setupForm() {
+    this.#form  = document.getElementById('login-form');
+    this.#errEl = document.getElementById('login-error');
+    this.#btn   = document.getElementById('login-btn');
+    this.#form.addEventListener('submit', this.#onSubmit);
+    document.getElementById('login-username')?.focus();
+  }
 
   #onSubmit = async (e) => {
     e.preventDefault();

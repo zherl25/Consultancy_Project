@@ -46,6 +46,16 @@ export class ApiClient {
     return res.json();
   }
 
+  /**
+   * Validate the stored token. Throws ApiError(401) if invalid/expired.
+   * @returns {Promise<{ username: string }>}
+   */
+  async me() {
+    const res = await fetch(`${this._base}/auth/me`, { headers: this._authHeader() });
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
   // ── Documents ────────────────────────────────────────────
 
   /** @returns {Promise<Document[]>} */

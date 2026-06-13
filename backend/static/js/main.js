@@ -13,16 +13,16 @@ import { LandingPage } from './pages/landing.js';
 import { DocsPage }    from './pages/docs.js';
 import { ChatPage }    from './pages/chat.js';
 
-// ── Auth guard ────────────────────────────────────────────
-// Redirect to login immediately so the router starts on the right page.
-if (!localStorage.getItem('consultant_ai_token')) {
-  window.location.hash = '#login';
-}
-
 // ── Dependency construction ───────────────────────────────
 const api      = new ApiClient();
 const toast    = new Toast(document.getElementById('toasts'));
 const sessions = new SessionStore();
+
+// Silently clear any stale/expired token before the user interacts.
+// Runs in the background — landing page shows immediately without waiting.
+if (localStorage.getItem('consultant_ai_token')) {
+  api.me().catch(() => localStorage.removeItem('consultant_ai_token'));
+}
 
 const login   = new LoginPage({ api });
 const landing = new LandingPage();
@@ -30,7 +30,10 @@ const docs    = new DocsPage({ api, toast });
 const chat    = new ChatPage({ api, toast, sessions });
 
 // ── 401 handler — redirect to login on expired token ──────
-api.onUnauthorized = () => { window.location.hash = '#login'; };
+api.onUnauthorized = () => {
+  toast.show('Your session has expired — please sign in again.', 'error');
+  window.location.hash = '#login';
+};
 
 // ── Logout wiring ─────────────────────────────────────────
 function logout() {
@@ -55,9 +58,13 @@ docs.onChatAbout = (filename) => {
 const router = new Router()
   .add('#login', login)
   .add('#',      landing)
-  .add('#docs',  docs)
-  .add('#chat',  chat)
+  .add('#docs',  docs, { requiresAuth: true })
+  .add('#chat',  chat, { requiresAuth: true })
   .start();
 
-// Wire login success now that router exists
-login.onSuccess = () => router.navigate('#');
+// After login, return to the page the user was trying to reach (default: docs)
+login.onSuccess = () => {
+  const dest = router.returnHash ?? '#docs';
+  router.clearReturnHash();
+  router.navigate(dest);
+};
