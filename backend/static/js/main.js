@@ -38,7 +38,7 @@ api.onUnauthorized = () => {
 // ── Logout wiring ─────────────────────────────────────────
 function logout() {
   localStorage.removeItem('consultant_ai_token');
-  window.location.hash = '#login';
+  window.location.hash = '#';
 }
 document.querySelectorAll('[data-logout]').forEach((btn) => {
   btn.addEventListener('click', logout);
@@ -61,6 +61,11 @@ const router = new Router()
   .add('#docs',  docs, { requiresAuth: true })
   .add('#chat',  chat, { requiresAuth: true })
   .start();
+
+// Redirect already-authenticated users away from landing straight to the app
+landing.onEnter = () => {
+  if (localStorage.getItem('consultant_ai_token')) router.navigate('#docs');
+};
 
 // After login, return to the page the user was trying to reach (default: docs)
 login.onSuccess = () => {
