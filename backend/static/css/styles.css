@@ -609,3 +609,42 @@ html, body {
   transition: color .2s; margin-bottom: 8px;
 }
 .ss-logout:hover { color: #f87171; }
+
+
+/* ════════════════════════════════════════════════════════════
+   CONFIRM DIALOG
+   ════════════════════════════════════════════════════════════ */
+
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 900;
+  background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .15s ease;
+}
+.confirm-card {
+  background: var(--panel); border-radius: 16px; border: 1px solid var(--border);
+  padding: 28px 28px 20px; width: 360px; max-width: calc(100vw - 32px);
+  box-shadow: var(--sh3);
+  animation: scaleIn .2s cubic-bezier(.16,1,.3,1);
+}
+.confirm-title {
+  font-size: .98rem; font-weight: 700; color: var(--text); margin-bottom: 8px;
+}
+.confirm-msg {
+  font-size: .875rem; color: var(--muted); margin-bottom: 24px; line-height: 1.55;
+}
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.confirm-btn-cancel {
+  padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border);
+  background: none; color: var(--muted); font-size: .875rem; font-family: inherit;
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.confirm-btn-cancel:hover { background: var(--bg); color: var(--text); }
+.confirm-btn-ok {
+  padding: 8px 18px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; font-size: .875rem; font-family: inherit;
+  font-weight: 600; cursor: pointer; transition: background .15s;
+}
+.confirm-btn-ok:hover       { background: #1d4ed8; }
+.confirm-btn-ok.danger      { background: var(--danger); }
+.confirm-btn-ok.danger:hover { background: #dc2626; }

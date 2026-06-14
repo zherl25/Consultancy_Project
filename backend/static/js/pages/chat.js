@@ -12,6 +12,7 @@
 import {
   sanitize, renderMarkdown, getExtension, formatDate, typeBadgeClass,
 } from '../utils.js';
+import { showConfirm } from '../confirm.js';
 
 export class ChatPage {
   get pageId() { return 'page-chat'; }
@@ -173,8 +174,13 @@ export class ChatPage {
     input.select();
   }
 
-  #deleteSession(id) {
-    if (!confirm('Delete this session?')) return;
+  async #deleteSession(id) {
+    const ok = await showConfirm({
+      title:        'Delete session?',
+      message:      'This chat history will be permanently removed.',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     this.#sessions.delete(id);
 
     if (id !== this.#sessionId) return;

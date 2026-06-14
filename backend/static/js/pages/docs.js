@@ -8,6 +8,7 @@
  */
 
 import { formatBytes, formatDate, getExtension, sanitize, typeBadgeClass, typeIconClass } from '../utils.js';
+import { showConfirm } from '../confirm.js';
 
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'xlsx', 'txt', 'md']);
 
@@ -61,7 +62,12 @@ export class DocsPage {
   }
 
   async #deleteDocument(filename) {
-    if (!confirm(`Remove "${filename}" from the knowledge base?`)) return;
+    const ok = await showConfirm({
+      title:        'Remove document?',
+      message:      `"${filename}" will be permanently removed from the knowledge base.`,
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
     try {
       await this.#api.deleteDocument(filename);
       this.#toast.show(`Removed "${filename}"`, 'success');
