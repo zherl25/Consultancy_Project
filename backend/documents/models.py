@@ -5,6 +5,8 @@ class UploadResponse(BaseModel):
     filename: str
     chunks_indexed: int
     size_bytes: int
+    project_id: str | None = None
+    folder_id: str | None = None
 
 
 class DocumentInfo(BaseModel):
@@ -12,6 +14,8 @@ class DocumentInfo(BaseModel):
     uploaded_at: str | None
     chunk_count: int
     size_bytes: int
+    project_id: str | None = None
+    folder_id: str | None = None
 
 
 class DocumentListResponse(BaseModel):

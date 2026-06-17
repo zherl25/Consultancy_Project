@@ -8,4 +8,4 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
-    document_filter: str | None = None
+    project_filter: str | None = None  # project_id to scope retrieval
