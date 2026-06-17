@@ -119,8 +119,8 @@
   </section>
 </div>
 
-<!-- ═══════════════════════ DOCS ═══════════════════════ -->
-<div id="page-docs" class="hidden">
+<!-- ═══════════════════════ PROJECTS ═══════════════════════ -->
+<div id="page-projects" class="hidden">
   <nav class="app-nav" aria-label="App navigation">
     <a href="#" class="app-logo" aria-label="Consultant AI home">
       <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
@@ -133,44 +133,78 @@
       Consultant AI
     </a>
     <div class="nav-sp" aria-hidden="true"></div>
-    <a href="#docs" class="nav-a active" aria-current="page">Documents</a>
-    <a href="#chat" class="nav-a">Chat</a>
+    <a href="#projects" class="nav-a active" aria-current="page">Projects</a>
+    <a href="#chat"     class="nav-a">Chat</a>
     <button class="nav-logout" data-logout aria-label="Sign out">Sign out</button>
   </nav>
 
-  <main class="docs-body">
-    <h1>Document Library</h1>
-    <p class="docs-sub">Upload files to power your AI-assisted research. Drag and drop — supports multiple files at once.</p>
+  <div class="proj-layout">
 
-    <div class="dz-wrap">
-      <div id="drop-zone" role="button" tabindex="0" aria-label="Upload files — click or drag and drop">
-        <input type="file" id="file-input" accept=".pdf,.docx,.xlsx,.txt,.md" multiple aria-label="Choose files" />
-        <div class="dz-ring" aria-hidden="true">
-          <svg width="28" height="28" fill="none" stroke="white" stroke-width="2.2" viewBox="0 0 24 24">
-            <path d="M12 16V8m0 0l-3 3m3-3l3 3" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M20 16.7A4 4 0 0017 9h-.9A7 7 0 104 15.9" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Left panel: project list -->
+    <aside class="proj-sidebar" aria-label="Project list">
+      <div class="proj-sidebar-hdr">
+        <span class="proj-sidebar-title">Projects</span>
+        <button id="new-proj-btn" class="proj-new-btn" aria-label="Create new project">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
           </svg>
-        </div>
-        <div class="dz-title">Drop files here or <span>click to browse</span></div>
-        <div class="dz-sub">PDF, Word, Excel, TXT, Markdown · Max 50 MB each</div>
-        <div class="dz-fmt" aria-label="Supported formats">
-          <span class="tb tb-pdf">PDF</span>
-          <span class="tb tb-docx">DOCX</span>
-          <span class="tb tb-xlsx">XLSX</span>
-          <span class="tb tb-txt">TXT</span>
-          <span class="tb tb-md">MD</span>
-        </div>
+          New
+        </button>
       </div>
-    </div>
+      <div id="proj-list" role="list" aria-label="Projects"></div>
+    </aside>
 
-    <div id="upload-log" role="log" aria-live="polite" aria-label="Upload progress"></div>
+    <!-- Right panel: project detail -->
+    <main class="proj-main">
 
-    <div class="lib-hdr">
-      <h2>Your Documents</h2>
-      <span class="lib-cnt" id="lib-cnt" aria-live="polite">0 files</span>
-    </div>
-    <div id="doc-grid" role="list" aria-label="Uploaded documents"></div>
-  </main>
+      <!-- Empty state -->
+      <div id="proj-empty" class="proj-empty-state">
+        <svg width="48" height="48" fill="none" stroke="#cbd5e1" stroke-width="1.4" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p>Select a project or create a new one to get started.</p>
+      </div>
+
+      <!-- Project detail (shown when a project is selected) -->
+      <div id="proj-detail" class="proj-detail hidden">
+
+        <!-- Project header -->
+        <div class="proj-hdr">
+          <div class="proj-hdr-info">
+            <h2 id="proj-name" class="proj-name"></h2>
+            <p  id="proj-desc" class="proj-desc"></p>
+          </div>
+          <div class="proj-hdr-actions">
+            <button id="proj-edit-btn" class="proj-action-btn" aria-label="Edit project">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Edit
+            </button>
+            <button id="proj-del-btn" class="proj-action-btn danger" aria-label="Delete project">
+              <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Delete
+            </button>
+          </div>
+        </div>
+
+        <!-- Folder list (accordion) -->
+        <div id="proj-folders" class="proj-folders" role="list"></div>
+
+        <!-- Add folder -->
+        <button id="add-folder-btn" class="proj-add-folder-btn">
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" stroke-linecap="round"/>
+          </svg>
+          Add Folder
+        </button>
+
+      </div><!-- /proj-detail -->
+    </main>
+  </div><!-- /proj-layout -->
 </div>
 
 <!-- ═══════════════════════ CHAT ═══════════════════════ -->
@@ -205,11 +239,11 @@
         </svg>
         Sign out
       </button>
-      <a href="#docs" aria-label="Manage uploaded documents">
+      <a href="#projects" aria-label="Manage projects">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 12h6M9 16h6M17 21H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        Manage Documents
+        Manage Projects
       </a>
     </div>
   </aside>
