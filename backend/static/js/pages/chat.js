@@ -12,7 +12,6 @@
 import {
   sanitize, renderMarkdown, getExtension, formatDate, typeBadgeClass,
 } from '../utils.js';
-// typeBadgeClass / getExtension still used for source cards
 import { showConfirm } from '../confirm.js';
 
 export class ChatPage {
