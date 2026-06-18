@@ -12,6 +12,7 @@
 import {
   sanitize, renderMarkdown, getExtension, formatDate, typeBadgeClass,
 } from '../utils.js';
+// typeBadgeClass / getExtension still used for source cards
 import { showConfirm } from '../confirm.js';
 
 export class ChatPage {
@@ -35,14 +36,14 @@ export class ChatPage {
   #sessions;
 
   // ── State ─────────────────────────────────────────────────
-  /** @type {string|null} */                        #sessionId     = null;
-  /** @type {Array<{role:string,content:string}>} */ #conversation  = [];
-  /** @type {string|null} */                        #docFilter     = null;
-  /** @type {{ abort: () => void }|null} */         #stream        = null;
-  /** @type {string|null} */                        #pendingId     = null;
-  /** @type {Array<import('../api.js').Document>} */#docs          = [];
-  /** @type {(() => void)|null} */                  #unsubSessions = null;
-  /** @type {Record<string, EventListener>} */      #handlers      = {};
+  /** @type {string|null} */                           #sessionId     = null;
+  /** @type {Array<{role:string,content:string}>} */   #conversation  = [];
+  /** @type {string|null} */                           #projectFilter = null;
+  /** @type {{ abort: () => void }|null} */            #stream        = null;
+  /** @type {string|null} */                           #pendingId     = null;
+  /** @type {Array<import('../api.js').ProjectResponse>} */ #projects  = [];
+  /** @type {(() => void)|null} */                     #unsubSessions = null;
+  /** @type {Record<string, EventListener>} */         #handlers      = {};
 
   // ── Public API ────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ export class ChatPage {
     // Guarantee at least one session exists
     if (!this.#sessions.getAll().length) this.#sessions.create();
 
-    await this.#loadDocs();
+    await this.#loadProjects();
 
     const targetId = this.#pendingId ?? this.#sessions.getLastId() ?? this.#sessions.getAll()[0]?.id;
     this.#pendingId = null;
@@ -82,7 +83,7 @@ export class ChatPage {
 
     this.#sessionId    = id;
     this.#conversation = [...(session.messages ?? [])];
-    this.#docFilter    = session.documentFilter ?? null;
+    this.#projectFilter = session.projectFilter ?? null;
     this.#sessions.setLastId(id);
 
     document.getElementById('sess-title').textContent = session.name;
@@ -190,10 +191,10 @@ export class ChatPage {
     this.#activateSession(nextId);
   }
 
-  // ── Document filter dropdown ──────────────────────────────
+  // ── Project filter dropdown ───────────────────────────────
 
-  async #loadDocs() {
-    try { this.#docs = await this.#api.getDocuments(); } catch { /* non-fatal */ }
+  async #loadProjects() {
+    try { this.#projects = await this.#api.getProjects(); } catch { /* non-fatal */ }
     this.#renderFilterDropdown();
   }
 
@@ -203,35 +204,43 @@ export class ChatPage {
 
     const makeOption = (label, iconHtml, filterValue) => {
       const opt = document.createElement('div');
-      opt.className   = `fo${this.#docFilter === filterValue ? ' sel' : ''}`;
+      opt.className   = `fo${this.#projectFilter === filterValue ? ' sel' : ''}`;
       opt.setAttribute('role', 'option');
-      opt.setAttribute('aria-selected', String(this.#docFilter === filterValue));
+      opt.setAttribute('aria-selected', String(this.#projectFilter === filterValue));
       opt.innerHTML = `${iconHtml}<span class="fo-name" title="${sanitize(label)}">${sanitize(label)}</span>`;
       opt.addEventListener('click', () => { this.#setFilter(filterValue); dd.classList.remove('open'); });
       return opt;
     };
 
-    dd.appendChild(makeOption('All Documents', '<span>🗂️</span>', null));
-    this.#docs.forEach((doc) => {
-      const ext    = getExtension(doc.filename).toUpperCase();
-      const iconHtml = `<span class="tb ${typeBadgeClass(doc.filename)}">${ext}</span>`;
-      dd.appendChild(makeOption(doc.filename, iconHtml, doc.filename));
+    const folderIcon = '<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    dd.appendChild(makeOption('All Projects', '<span>🗂️</span>', null));
+    this.#projects.forEach((proj) => {
+      dd.appendChild(makeOption(proj.name, folderIcon, proj.id));
     });
+
+    if (!this.#projects.length) {
+      const empty = document.createElement('div');
+      empty.className = 'fo-empty';
+      empty.textContent = 'No projects yet — add one in Projects';
+      dd.appendChild(empty);
+    }
   }
 
   #setFilter(value) {
-    this.#docFilter = value;
-    if (this.#sessionId) this.#sessions.update(this.#sessionId, { documentFilter: value });
+    this.#projectFilter = value;
+    if (this.#sessionId) this.#sessions.update(this.#sessionId, { projectFilter: value });
     this.#updateFilterUI();
     this.#renderFilterDropdown();
   }
 
   #updateFilterUI() {
-    const btn = document.getElementById('flt-btn');
-    const lbl = document.getElementById('flt-lbl');
-    const f   = this.#docFilter;
+    const btn  = document.getElementById('flt-btn');
+    const lbl  = document.getElementById('flt-lbl');
+    const f    = this.#projectFilter;
+    const proj = f ? this.#projects.find((p) => p.id === f) : null;
+    const name = proj?.name ?? null;
 
-    lbl.textContent = f ? (f.length > 26 ? `${f.slice(0, 26)}…` : f) : 'All Documents';
+    lbl.textContent = name ? (name.length > 26 ? `${name.slice(0, 26)}…` : name) : 'All Projects';
     btn.classList.toggle('on', Boolean(f));
     btn.setAttribute('aria-expanded', 'false');
   }
@@ -245,10 +254,10 @@ export class ChatPage {
     el.innerHTML = '';
 
     if (!this.#conversation.length) {
-      if (!this.#docs.length) {
+      if (!this.#projects.length) {
         el.innerHTML = `<div class="sys-msg">
-          No documents uploaded yet.<br/>
-          <a href="#docs" class="sys-link">Upload files in Documents →</a>
+          No projects yet.<br/>
+          <a href="#projects" class="sys-link">Create a project in Projects →</a>
         </div>`;
       } else {
         el.innerHTML = '<div class="sys-msg">Ask a question about your documents.</div>';
@@ -359,7 +368,7 @@ export class ChatPage {
     let fullText = '';
     let sources  = [];
 
-    this.#stream = this.#api.streamChat(this.#conversation, this.#docFilter, {
+    this.#stream = this.#api.streamChat(this.#conversation, this.#projectFilter, {
       onToken: (token) => {
         fullText += token;
         bbl.innerHTML = renderMarkdown(fullText);
@@ -413,7 +422,7 @@ export class ChatPage {
 
     this.#handlers.fltToggle = (e) => {
       e.stopPropagation();
-      this.#loadDocs().then(() => {
+      this.#loadProjects().then(() => {
         document.getElementById('flt-dd').classList.toggle('open');
       });
     };
