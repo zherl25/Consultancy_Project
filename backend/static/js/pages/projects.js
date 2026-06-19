@@ -378,7 +378,7 @@ export class ProjectsPage {
 
     const editBtn = document.getElementById('proj-edit-btn');
     const saveBtn = document.createElement('button');
-    saveBtn.id        = 'proj-edit-btn';
+    saveBtn.id        = 'proj-save-btn';
     saveBtn.className = 'proj-action-btn primary';
     saveBtn.textContent = 'Save';
     editBtn.replaceWith(saveBtn);
@@ -416,7 +416,7 @@ export class ProjectsPage {
       try {
         const updated = await this.#api.updateProject(p.id, { name, description: desc });
         this.#selected = { ...this.#selected, name: updated.name, description: updated.description };
-        restore();
+        this.#renderProjectDetail();
         await this.#loadProjectsQuiet();
       } catch {
         this.#toast.show('Could not update project.', 'error');
@@ -467,7 +467,10 @@ export class ProjectsPage {
 
     const commit = async () => {
       const next = input.value.trim() || orig;
-      input.replaceWith(document.createTextNode(next));
+      const span = document.createElement('span');
+      span.className = 'pf-name';
+      span.textContent = next;
+      input.replaceWith(span);
       if (next === orig) return;
       try {
         await this.#api.updateFolder(this.#selected.id, folder.id, { name: next });
