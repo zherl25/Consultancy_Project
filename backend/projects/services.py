@@ -70,8 +70,8 @@ async def update_folder(project_id: str, folder_id: str, name: str) -> FolderRes
 
 
 async def delete_folder(project_id: str, folder_id: str) -> None:
-    exists = await db.update_folder(project_id, folder_id, "")  # quick existence check
-    if exists is None:
+    folder = await db.get_folder(project_id, folder_id)
+    if folder is None:
         raise FolderNotFoundError(f"Folder '{folder_id}' not found.")
     await delete_folder_documents(folder_id)
     await db.delete_folder(project_id, folder_id)

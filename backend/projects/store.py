@@ -130,6 +130,19 @@ async def list_folders(project_id: str) -> list[dict]:
     return folders
 
 
+async def get_folder(project_id: str, folder_id: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT id, project_id, name, sort_order, created_at FROM project_folders WHERE id=? AND project_id=?",
+            (folder_id, project_id),
+        )
+        row = await cursor.fetchone()
+    if not row:
+        return None
+    return {"id": row[0], "project_id": row[1], "name": row[2],
+            "sort_order": row[3], "created_at": row[4]}
+
+
 async def update_folder(project_id: str, folder_id: str, name: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
