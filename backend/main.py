@@ -20,6 +20,7 @@ from .config import settings
 from .core.limiter import limiter
 from .core.logging import setup_logging
 from .documents.routes import router as documents_router
+from .projects.routes import router as projects_router
 from .vector_store.store import init_model
 
 setup_logging()
@@ -80,6 +81,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # ── Routers ────────────────────────────────────────────────────────────────────
 
 app.include_router(auth_router)
+app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(chat_router)
 

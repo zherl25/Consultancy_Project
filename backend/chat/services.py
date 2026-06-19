@@ -50,8 +50,8 @@ async def _demo_stream(user_msg: str, chunks: list[dict]) -> AsyncGenerator[str,
     if not chunks:
         body = (
             "**Demo mode** — no API key is configured yet.\n\n"
-            "No documents have been uploaded. Use the Documents page to upload a PDF, DOCX, "
-            "XLSX, or TXT file, then ask questions about it."
+            "No documents have been uploaded. Use the Projects page to upload files, "
+            "then ask questions about them."
         )
     else:
         sources_str = ", ".join(sorted({c["source"] for c in chunks}))
@@ -108,10 +108,10 @@ async def _openai_stream(
 
 
 async def stream_response(
-    messages: list[ChatMessage], document_filter: str | None
+    messages: list[ChatMessage], project_filter: str | None
 ) -> AsyncGenerator[str, None]:
     user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
-    chunks   = await query(user_msg, n_results=settings.max_context_chunks, source_filter=document_filter)
+    chunks   = await query(user_msg, n_results=settings.max_context_chunks, project_id=project_filter)
 
     if not settings.openai_api_key:
         async for event in _demo_stream(user_msg, chunks):

@@ -22,7 +22,7 @@ async def chat(
         raise HTTPException(status_code=400, detail="No messages provided.")
 
     return StreamingResponse(
-        services.stream_response(request_body.messages, request_body.document_filter),
+        services.stream_response(request_body.messages, request_body.project_filter),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

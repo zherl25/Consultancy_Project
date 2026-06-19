@@ -16,9 +16,13 @@ export class ApiError extends Error {
   }
 }
 
-/** @typedef {{ filename: string, uploaded_at: string, chunk_count: number, size_bytes: number }} Document */
-/** @typedef {{ role: string, content: string }} ChatMessage */
-/** @typedef {{ source: string, score: number, preview: string }} Source */
+/**
+ * @typedef {{ filename: string, uploaded_at: string, chunk_count: number, size_bytes: number, project_id: string|null, folder_id: string|null }} Document
+ * @typedef {{ role: string, content: string }} ChatMessage
+ * @typedef {{ source: string, score: number, preview: string }} Source
+ * @typedef {{ id: string, name: string, description: string, created_at: string, updated_at: string, file_count: number, folders: FolderResponse[] }} ProjectResponse
+ * @typedef {{ id: string, project_id: string, name: string, sort_order: number, created_at: string, documents: Document[] }} FolderResponse
+ */
 
 export class ApiClient {
   /** @param {string} [baseUrl] Defaults to the current origin. */
@@ -56,11 +60,131 @@ export class ApiClient {
     return res.json();
   }
 
+  // ── Projects ──────────────────────────────────────────────
+
+  /** @returns {Promise<ProjectResponse[]>} */
+  async getProjects() {
+    const res = await fetch(`${this._base}/projects`, { headers: this._authHeader() });
+    if (res.status === 401) { this._handleUnauth(); return []; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
+   * @param {string} name
+   * @param {string} [description]
+   * @returns {Promise<ProjectResponse>}
+   */
+  async createProject(name, description = '') {
+    const res = await fetch(`${this._base}/projects`, {
+      method:  'POST',
+      headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, description }),
+    });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
+   * @param {string} id
+   * @returns {Promise<ProjectResponse>}
+   */
+  async getProject(id) {
+    const res = await fetch(`${this._base}/projects/${id}`, { headers: this._authHeader() });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
+   * @param {string} id
+   * @param {{ name?: string, description?: string }} updates
+   * @returns {Promise<ProjectResponse>}
+   */
+  async updateProject(id, updates) {
+    const res = await fetch(`${this._base}/projects/${id}`, {
+      method:  'PATCH',
+      headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify(updates),
+    });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /** @param {string} id */
+  async deleteProject(id) {
+    const res = await fetch(`${this._base}/projects/${id}`, {
+      method:  'DELETE',
+      headers: this._authHeader(),
+    });
+    if (res.status === 401) { this._handleUnauth(); return; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  // ── Folders ───────────────────────────────────────────────
+
+  /**
+   * @param {string} projectId
+   * @param {string} name
+   * @param {number} [sortOrder]
+   * @returns {Promise<FolderResponse>}
+   */
+  async createFolder(projectId, name, sortOrder = 0) {
+    const res = await fetch(`${this._base}/projects/${projectId}/folders`, {
+      method:  'POST',
+      headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ name, sort_order: sortOrder }),
+    });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
+   * @param {string} projectId
+   * @param {string} folderId
+   * @param {{ name?: string }} updates
+   * @returns {Promise<FolderResponse>}
+   */
+  async updateFolder(projectId, folderId, updates) {
+    const res = await fetch(`${this._base}/projects/${projectId}/folders/${folderId}`, {
+      method:  'PATCH',
+      headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify(updates),
+    });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
+   * @param {string} projectId
+   * @param {string} folderId
+   */
+  async deleteFolder(projectId, folderId) {
+    const res = await fetch(`${this._base}/projects/${projectId}/folders/${folderId}`, {
+      method:  'DELETE',
+      headers: this._authHeader(),
+    });
+    if (res.status === 401) { this._handleUnauth(); return; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
   // ── Documents ────────────────────────────────────────────
 
-  /** @returns {Promise<Document[]>} */
-  async getDocuments() {
-    const res = await fetch(`${this._base}/documents`, { headers: this._authHeader() });
+  /**
+   * @param {string} [projectId]
+   * @returns {Promise<Document[]>}
+   */
+  async getDocuments(projectId) {
+    const url = projectId
+      ? `${this._base}/documents?project_id=${encodeURIComponent(projectId)}`
+      : `${this._base}/documents`;
+    const res = await fetch(url, { headers: this._authHeader() });
     if (res.status === 401) { this._handleUnauth(); return []; }
     if (!res.ok) await this._reject(res);
     return (await res.json()).documents;
@@ -68,15 +192,22 @@ export class ApiClient {
 
   /**
    * Upload a single file using XHR so we get real upload-progress events.
-   * @param {File} file
+   * @param {File}   file
+   * @param {string} [projectId]
+   * @param {string} [folderId]
    * @param {(pct: number) => void} [onProgress]
    * @returns {Promise<{ filename: string, chunks_indexed: number, size_bytes: number }>}
    */
-  uploadFile(file, onProgress) {
+  uploadFile(file, projectId, folderId, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr  = new XMLHttpRequest();
       const form = new FormData();
       form.append('file', file);
+
+      const params = new URLSearchParams();
+      if (projectId) params.set('project_id', projectId);
+      if (folderId)  params.set('folder_id',  folderId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable) onProgress?.(Math.round((e.loaded / e.total) * 100));
@@ -99,7 +230,7 @@ export class ApiClient {
       xhr.addEventListener('error', () => reject(new ApiError('Network error during upload', 0)));
       xhr.addEventListener('abort', () => reject(new ApiError('Upload cancelled', 0)));
 
-      xhr.open('POST', `${this._base}/upload`);
+      xhr.open('POST', `${this._base}/upload${qs}`);
       const token = localStorage.getItem('consultant_ai_token');
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.send(form);
@@ -126,7 +257,7 @@ export class ApiClient {
    * Open an SSE chat stream. Returns a handle whose `abort()` cancels it.
    *
    * @param {ChatMessage[]} messages
-   * @param {string|null}   documentFilter
+   * @param {string|null}   projectFilter  project_id to scope retrieval, or null for all
    * @param {{
    *   onToken:   (token: string)     => void,
    *   onSources: (sources: Source[]) => void,
@@ -135,7 +266,7 @@ export class ApiClient {
    * }} callbacks
    * @returns {{ abort: () => void }}
    */
-  streamChat(messages, documentFilter, callbacks) {
+  streamChat(messages, projectFilter, callbacks) {
     const controller = new AbortController();
 
     (async () => {
@@ -143,7 +274,7 @@ export class ApiClient {
         const res = await fetch(`${this._base}/chat`, {
           method:  'POST',
           headers: { ...this._authHeader(), 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ messages, document_filter: documentFilter }),
+          body:    JSON.stringify({ messages, project_filter: projectFilter }),
           signal:  controller.signal,
         });
 
