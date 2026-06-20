@@ -129,7 +129,7 @@ export class ProjectsPage {
       .slice()
       .sort((a, b) => a.sort_order - b.sort_order)
       .forEach((folder) => {
-        if (!(folder.id in this.#folderOpen)) this.#folderOpen[folder.id] = true;
+        if (!(folder.id in this.#folderOpen)) this.#folderOpen[folder.id] = false;
         container.appendChild(this.#buildFolderSection(folder));
       });
   }
