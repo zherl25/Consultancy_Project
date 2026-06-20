@@ -659,13 +659,14 @@ html, body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  animation: pageIn .35s cubic-bezier(.16,1,.3,1);
 }
 
 .proj-layout {
   display: grid;
   grid-template-columns: 260px 1fr;
+  grid-template-rows: 1fr;   /* force row to fill container height */
   flex: 1;
+  min-height: 0;             /* allow flex item to shrink below content size */
   overflow: hidden;
 }
 
@@ -676,6 +677,7 @@ html, body {
   border-right: 1px solid var(--border);
   background: var(--panel);
   overflow: hidden;
+  min-height: 0;
 }
 
 .proj-sidebar-hdr {
@@ -806,6 +808,7 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg);
+  min-height: 0;
 }
 
 /* Empty state */
@@ -827,6 +830,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
   animation: pageIn .25s ease;
 }
 
@@ -981,27 +985,26 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
   background: none;
   cursor: pointer;
   color: var(--muted);
-  transition: background .13s, color .13s;
+  transition: background .13s, color .13s, border-color .13s;
   flex-shrink: 0;
 }
-.pf-btn:hover          { background: var(--bg); color: var(--text); }
-.pf-btn.pf-delete:hover { background: #fff1f1; color: var(--danger); }
+.pf-btn:hover           { background: var(--bg); color: var(--text); border-color: var(--border); }
+.pf-btn.pf-delete:hover { background: #fff1f1; color: var(--danger); border-color: #fecaca; }
 
 /* Folder body */
 .pf-body {
-  padding: 0 14px 14px;
+  padding: 12px 14px 14px;
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   border-top: 1px solid var(--border);
-  animation: slideDown .18s ease;
 }
 .pf-section.open .pf-body { display: flex; }
 
@@ -1066,21 +1069,22 @@ html, body {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-top: 4px;
 }
 .pf-upload-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 14px;
+  padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: .8rem;
+  border: 1.5px dashed var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: .82rem;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
-  transition: background .13s, border-color .13s;
+  transition: background .13s, border-color .13s, color .13s;
 }
 .pf-upload-btn:hover    { background: var(--accent-l); border-color: var(--accent); color: var(--accent); }
 .pf-upload-btn:disabled { opacity: .5; cursor: not-allowed; }
