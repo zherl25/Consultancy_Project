@@ -64,10 +64,8 @@ async def _init_db() -> None:
         await db.execute(_SQL_FOLDERS)
         await db.execute(_SQL_CHUNKS)
         await db.execute(_SQL_DOCUMENTS)
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks (source)")
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_project ON documents (project_id)")
 
-        # Migrate existing documents table: add columns if absent
+        # Migrate existing documents table BEFORE creating indexes that depend on new columns
         cursor = await db.execute("PRAGMA table_info(documents)")
         existing_cols = {row[1] for row in await cursor.fetchall()}
         if "project_id" not in existing_cols:
@@ -78,6 +76,9 @@ async def _init_db() -> None:
             await db.execute(
                 "ALTER TABLE documents ADD COLUMN folder_id TEXT REFERENCES project_folders(id) ON DELETE SET NULL"
             )
+
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks (source)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_project ON documents (project_id)")
         await db.commit()
 
 
