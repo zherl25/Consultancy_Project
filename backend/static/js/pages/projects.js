@@ -386,17 +386,21 @@ export class ProjectsPage {
     nameIn.focus();
     nameIn.select();
 
+    // Swap the inputs back for the heading/description/Edit button, showing the
+    // current state of #selected (updated on save, unchanged on cancel/error).
     const restore = () => {
+      const current = this.#selected ?? p;
+
       const newNameEl = document.createElement('h2');
       newNameEl.id        = 'proj-name';
       newNameEl.className = 'proj-name';
-      newNameEl.textContent = p.name;
+      newNameEl.textContent = current.name;
       nameIn.replaceWith(newNameEl);
 
       const newDescEl = document.createElement('p');
       newDescEl.id        = 'proj-desc';
       newDescEl.className = 'proj-desc';
-      newDescEl.textContent = p.description || 'No description';
+      newDescEl.textContent = current.description || 'No description';
       descIn.replaceWith(newDescEl);
 
       const origBtn = document.createElement('button');
@@ -410,23 +414,33 @@ export class ProjectsPage {
       saveBtn.replaceWith(origBtn);
     };
 
+    let saving = false;
     const save = async () => {
+      if (saving) return;  // Enter + click, or key repeat, must not send twice
+      saving = true;
       const name = nameIn.value.trim() || origName;
       const desc = descIn.value.trim();
+      let updated;
       try {
-        const updated = await this.#api.updateProject(p.id, { name, description: desc });
-        this.#selected = { ...this.#selected, name: updated.name, description: updated.description };
-        this.#renderProjectDetail();
-        await this.#loadProjectsQuiet();
-      } catch {
-        this.#toast.show('Could not update project.', 'error');
+        updated = await this.#api.updateProject(p.id, { name, description: desc });
+      } catch (err) {
+        this.#toast.show(`Could not update project: ${err.message}`, 'error');
         restore();
+        return;
       }
+      this.#selected = { ...this.#selected, name: updated.name, description: updated.description };
+      restore();
+      this.#toast.show('Project updated.', 'success');
+      await this.#loadProjectsQuiet();
     };
 
     saveBtn.addEventListener('click', save);
-    nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') restore(); });
-    descIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') restore(); });
+    const onKey = (e) => {
+      if (e.key === 'Enter')  save();
+      if (e.key === 'Escape' && !saving) restore();
+    };
+    nameIn.addEventListener('keydown', onKey);
+    descIn.addEventListener('keydown', onKey);
   }
 
   async #deleteProject() {
