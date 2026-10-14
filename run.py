@@ -4,6 +4,8 @@ import os
 # Use cached model without contacting HuggingFace
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# Skip TensorFlow — embeddings run on PyTorch; avoids slow startup and log noise
+os.environ.setdefault("USE_TF", "0")
 
 import uvicorn
 
