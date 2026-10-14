@@ -1,6 +1,7 @@
 """Async SQLite vector store — sentence-transformers embeddings, numpy cosine similarity."""
 
 import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -22,12 +23,16 @@ CREATE TABLE IF NOT EXISTS chunks (
     source      TEXT    NOT NULL,
     chunk_index INTEGER NOT NULL,
     text        TEXT    NOT NULL,
-    embedding   BLOB    NOT NULL
+    embedding   BLOB    NOT NULL,
+    doc_id      TEXT
 )"""
 
+# Documents are identified by id, not filename — the same filename can exist
+# in several folders/projects (e.g. every client has a "Quality Manual.docx").
 _SQL_DOCUMENTS = """
-CREATE TABLE IF NOT EXISTS documents (
-    filename    TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS {table} (
+    id          TEXT PRIMARY KEY,
+    filename    TEXT    NOT NULL,
     uploaded_at TEXT    NOT NULL,
     chunk_count INTEGER NOT NULL,
     size_bytes  INTEGER NOT NULL,
@@ -63,23 +68,43 @@ async def _init_db() -> None:
         await db.execute(_SQL_PROJECTS)
         await db.execute(_SQL_FOLDERS)
         await db.execute(_SQL_CHUNKS)
-        await db.execute(_SQL_DOCUMENTS)
+        await db.execute(_SQL_DOCUMENTS.format(table="documents"))
 
-        # Migrate existing documents table BEFORE creating indexes that depend on new columns
+        # Migrate existing tables BEFORE creating indexes that depend on new columns
         cursor = await db.execute("PRAGMA table_info(documents)")
-        existing_cols = {row[1] for row in await cursor.fetchall()}
-        if "project_id" not in existing_cols:
+        doc_cols = {row[1] for row in await cursor.fetchall()}
+        if "id" not in doc_cols:
+            await _migrate_documents_to_ids(db, doc_cols)
+
+        cursor = await db.execute("PRAGMA table_info(chunks)")
+        if "doc_id" not in {row[1] for row in await cursor.fetchall()}:
+            await db.execute("ALTER TABLE chunks ADD COLUMN doc_id TEXT")
             await db.execute(
-                "ALTER TABLE documents ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL"
-            )
-        if "folder_id" not in existing_cols:
-            await db.execute(
-                "ALTER TABLE documents ADD COLUMN folder_id TEXT REFERENCES project_folders(id) ON DELETE SET NULL"
+                "UPDATE chunks SET doc_id = (SELECT d.id FROM documents d WHERE d.filename = chunks.source)"
             )
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_source ON chunks (source)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks (doc_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_project ON documents (project_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_folder_file ON documents (folder_id, filename)")
         await db.commit()
+
+
+async def _migrate_documents_to_ids(db: aiosqlite.Connection, cols: set[str]) -> None:
+    """Rebuild the legacy filename-keyed documents table with a surrogate id primary key."""
+    logger.info("Migrating documents table to id-based keys")
+    project_col = "project_id" if "project_id" in cols else "NULL"
+    folder_col  = "folder_id" if "folder_id" in cols else "NULL"
+    await db.execute(_SQL_DOCUMENTS.format(table="documents_new"))
+    await db.execute(
+        f"""INSERT INTO documents_new
+            (id, filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id)
+            SELECT lower(hex(randomblob(16))), filename, uploaded_at, chunk_count, size_bytes,
+                   {project_col}, {folder_col}
+            FROM documents"""
+    )
+    await db.execute("DROP TABLE documents")
+    await db.execute("ALTER TABLE documents_new RENAME TO documents")
 
 
 async def init_model() -> None:
@@ -111,7 +136,11 @@ async def add_document(
     size_bytes: int = 0,
     project_id: str | None = None,
     folder_id: str | None = None,
-) -> int:
+) -> tuple[str, int]:
+    """Index a document. Re-uploading the same filename into the same folder replaces it.
+
+    Returns (doc_id, chunk_count).
+    """
     model: SentenceTransformer = _get_model()
     embeddings: np.ndarray = await asyncio.to_thread(
         model.encode, chunks, show_progress_bar=False, normalize_embeddings=False
@@ -119,24 +148,47 @@ async def add_document(
 
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
-        await db.execute("DELETE FROM chunks WHERE source = ?", (filename,))
+        # `IS` matches NULL too, so un-foldered uploads are also replaced in place
+        cursor = await db.execute(
+            "SELECT id FROM documents WHERE filename = ? AND folder_id IS ? AND project_id IS ?",
+            (filename, folder_id, project_id),
+        )
+        existing = await cursor.fetchone()
+        doc_id = existing[0] if existing else uuid.uuid4().hex
+
+        await db.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
         await db.executemany(
-            "INSERT INTO chunks (id, source, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO chunks (id, doc_id, source, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?, ?)",
             [
-                (f"{filename}::{i}", filename, i, text, embeddings[i].astype(np.float32).tobytes())
+                (f"{doc_id}::{i}", doc_id, filename, i, text, embeddings[i].astype(np.float32).tobytes())
                 for i, text in enumerate(chunks)
             ],
         )
         await db.execute(
             """INSERT OR REPLACE INTO documents
-               (filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (filename, datetime.now(timezone.utc).isoformat(), len(chunks), size_bytes,
+               (id, filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (doc_id, filename, datetime.now(timezone.utc).isoformat(), len(chunks), size_bytes,
              project_id, folder_id),
         )
         await db.commit()
 
-    return len(chunks)
+    return doc_id, len(chunks)
+
+
+_DOC_COLUMNS = "id, filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id"
+
+
+def _doc_row(r) -> dict:
+    return {
+        "id":          r[0],
+        "filename":    r[1],
+        "uploaded_at": r[2],
+        "chunk_count": r[3],
+        "size_bytes":  r[4],
+        "project_id":  r[5],
+        "folder_id":   r[6],
+    }
 
 
 async def list_documents(
@@ -146,47 +198,34 @@ async def list_documents(
     async with aiosqlite.connect(DB_PATH) as db:
         if folder_id:
             cursor = await db.execute(
-                """SELECT filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id
-                   FROM documents WHERE folder_id = ? ORDER BY filename""",
+                f"SELECT {_DOC_COLUMNS} FROM documents WHERE folder_id = ? ORDER BY filename",
                 (folder_id,),
             )
         elif project_id:
             cursor = await db.execute(
-                """SELECT filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id
-                   FROM documents WHERE project_id = ? ORDER BY filename""",
+                f"SELECT {_DOC_COLUMNS} FROM documents WHERE project_id = ? ORDER BY filename",
                 (project_id,),
             )
         else:
-            cursor = await db.execute(
-                """SELECT filename, uploaded_at, chunk_count, size_bytes, project_id, folder_id
-                   FROM documents ORDER BY filename"""
-            )
+            cursor = await db.execute(f"SELECT {_DOC_COLUMNS} FROM documents ORDER BY filename")
         rows = await cursor.fetchall()
 
-    return [
-        {
-            "filename":    r[0],
-            "uploaded_at": r[1],
-            "chunk_count": r[2],
-            "size_bytes":  r[3],
-            "project_id":  r[4],
-            "folder_id":   r[5],
-        }
-        for r in rows
-    ]
+    return [_doc_row(r) for r in rows]
 
 
-async def delete_document(filename: str) -> int:
+async def delete_document(doc_id: str) -> tuple[str, int] | None:
+    """Delete a document and its chunks. Returns (filename, chunks_removed), or None if not found."""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
-        cursor = await db.execute("SELECT COUNT(*) FROM chunks WHERE source = ?", (filename,))
-        count: int = (await cursor.fetchone())[0]
-        if count == 0:
-            return 0
-        await db.execute("DELETE FROM chunks WHERE source = ?", (filename,))
-        await db.execute("DELETE FROM documents WHERE filename = ?", (filename,))
+        cursor = await db.execute("SELECT filename FROM documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        cursor = await db.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+        count = cursor.rowcount
+        await db.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         await db.commit()
-    return count
+    return row[0], count
 
 
 async def delete_project_documents(project_id: str) -> int:
@@ -194,7 +233,7 @@ async def delete_project_documents(project_id: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute(
-            "DELETE FROM chunks WHERE source IN (SELECT filename FROM documents WHERE project_id = ?)",
+            "DELETE FROM chunks WHERE doc_id IN (SELECT id FROM documents WHERE project_id = ?)",
             (project_id,),
         )
         cursor = await db.execute("DELETE FROM documents WHERE project_id = ?", (project_id,))
@@ -208,7 +247,7 @@ async def delete_folder_documents(folder_id: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute(
-            "DELETE FROM chunks WHERE source IN (SELECT filename FROM documents WHERE folder_id = ?)",
+            "DELETE FROM chunks WHERE doc_id IN (SELECT id FROM documents WHERE folder_id = ?)",
             (folder_id,),
         )
         cursor = await db.execute("DELETE FROM documents WHERE folder_id = ?", (folder_id,))
@@ -238,7 +277,7 @@ async def query(
             cursor = await db.execute(
                 """SELECT c.source, c.text, c.embedding
                    FROM chunks c
-                   JOIN documents d ON c.source = d.filename
+                   JOIN documents d ON c.doc_id = d.id
                    WHERE d.project_id = ?""",
                 (project_id,),
             )

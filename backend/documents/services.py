@@ -29,13 +29,14 @@ async def upload(
         raise FileTooLargeError(f"File exceeds the {settings.upload_max_mb} MB limit.")
 
     chunks     = await asyncio.to_thread(process_document, filename, file_bytes)
-    num_chunks = await vs.add_document(
+    doc_id, num_chunks = await vs.add_document(
         filename, chunks,
         size_bytes=len(file_bytes),
         project_id=project_id,
         folder_id=folder_id,
     )
     return UploadResponse(
+        id=doc_id,
         filename=filename,
         chunks_indexed=num_chunks,
         size_bytes=len(file_bytes),
@@ -49,8 +50,9 @@ async def list_all(project_id: str | None = None, folder_id: str | None = None) 
     return DocumentListResponse(documents=[DocumentInfo(**doc) for doc in docs])
 
 
-async def delete(filename: str) -> DeleteResponse:
-    removed = await vs.delete_document(filename)
-    if removed == 0:
-        raise DocumentNotFoundError(f"Document '{filename}' not found.")
+async def delete(doc_id: str) -> DeleteResponse:
+    result = await vs.delete_document(doc_id)
+    if result is None:
+        raise DocumentNotFoundError(f"Document '{doc_id}' not found.")
+    filename, removed = result
     return DeleteResponse(filename=filename, chunks_removed=removed)

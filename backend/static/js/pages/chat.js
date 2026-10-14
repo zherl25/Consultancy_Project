@@ -384,7 +384,7 @@ export class ChatPage {
         bbl.innerHTML = renderMarkdown(fullText);
         const assistantMsg = { role: 'assistant', content: fullText, sources };
         this.#conversation.push(assistantMsg);
-        this.#appendSources(row, sources);
+        if (sources.length) this.#appendSources(row, sources);
         if (this.#sessionId) {
           this.#sessions.update(this.#sessionId, { messages: [...this.#conversation] });
         }

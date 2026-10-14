@@ -17,7 +17,7 @@ export class ApiError extends Error {
 }
 
 /**
- * @typedef {{ filename: string, uploaded_at: string, chunk_count: number, size_bytes: number, project_id: string|null, folder_id: string|null }} Document
+ * @typedef {{ id: string, filename: string, uploaded_at: string, chunk_count: number, size_bytes: number, project_id: string|null, folder_id: string|null }} Document
  * @typedef {{ role: string, content: string }} ChatMessage
  * @typedef {{ source: string, score: number, preview: string }} Source
  * @typedef {{ id: string, name: string, description: string, created_at: string, updated_at: string, file_count: number, folders: FolderResponse[] }} ProjectResponse
@@ -196,7 +196,7 @@ export class ApiClient {
    * @param {string} [projectId]
    * @param {string} [folderId]
    * @param {(pct: number) => void} [onProgress]
-   * @returns {Promise<{ filename: string, chunks_indexed: number, size_bytes: number }>}
+   * @returns {Promise<{ id: string, filename: string, chunks_indexed: number, size_bytes: number }>}
    */
   uploadFile(file, projectId, folderId, onProgress) {
     return new Promise((resolve, reject) => {
@@ -238,12 +238,12 @@ export class ApiClient {
   }
 
   /**
-   * @param {string} filename
+   * @param {string} docId
    * @returns {Promise<{ filename: string, chunks_removed: number }>}
    */
-  async deleteDocument(filename) {
+  async deleteDocument(docId) {
     const res = await fetch(
-      `${this._base}/documents/${encodeURIComponent(filename)}`,
+      `${this._base}/documents/${encodeURIComponent(docId)}`,
       { method: 'DELETE', headers: this._authHeader() },
     );
     if (res.status === 401) { this._handleUnauth(); return; }
