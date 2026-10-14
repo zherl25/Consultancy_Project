@@ -115,7 +115,7 @@ async def list_folders(project_id: str) -> list[dict]:
         folders = []
         for fr in folder_rows:
             dcursor = await db.execute(
-                "SELECT filename, uploaded_at, chunk_count, size_bytes FROM documents WHERE folder_id = ? ORDER BY filename",
+                "SELECT id, filename, uploaded_at, chunk_count, size_bytes FROM documents WHERE folder_id = ? ORDER BY filename",
                 (fr[0],),
             )
             doc_rows = await dcursor.fetchall()
@@ -123,7 +123,7 @@ async def list_folders(project_id: str) -> list[dict]:
                 "id": fr[0], "project_id": fr[1], "name": fr[2],
                 "sort_order": fr[3], "created_at": fr[4],
                 "documents": [
-                    {"filename": d[0], "uploaded_at": d[1], "chunk_count": d[2], "size_bytes": d[3]}
+                    {"id": d[0], "filename": d[1], "uploaded_at": d[2], "chunk_count": d[3], "size_bytes": d[4]}
                     for d in doc_rows
                 ],
             })

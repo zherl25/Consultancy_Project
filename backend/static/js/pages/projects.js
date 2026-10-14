@@ -256,7 +256,7 @@ export class ProjectsPage {
       });
       if (!ok) return;
       try {
-        await this.#api.deleteDocument(doc.filename);
+        await this.#api.deleteDocument(doc.id);
         await this.#selectProject(this.#selected.id);
         await this.#loadProjectsQuiet();
       } catch {

@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class UploadResponse(BaseModel):
+    id: str
     filename: str
     chunks_indexed: int
     size_bytes: int
@@ -10,6 +11,7 @@ class UploadResponse(BaseModel):
 
 
 class DocumentInfo(BaseModel):
+    id: str
     filename: str
     uploaded_at: str | None
     chunk_count: int

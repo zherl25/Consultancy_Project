@@ -21,6 +21,7 @@ class FolderUpdate(BaseModel):
 
 
 class DocumentInfo(BaseModel):
+    id: str
     filename: str
     uploaded_at: str | None
     chunk_count: int

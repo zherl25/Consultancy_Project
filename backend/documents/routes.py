@@ -58,15 +58,15 @@ async def get_documents(
     return await services.list_all(project_id=project_id, folder_id=folder_id)
 
 
-@router.delete("/documents/{filename:path}", response_model=DeleteResponse)
+@router.delete("/documents/{doc_id}", response_model=DeleteResponse)
 @limiter.limit("20/minute")
 async def remove_document(
-    filename: str,
+    doc_id: str,
     request: Request,
     _: str = Depends(get_current_user),
 ):
     try:
-        result = await services.delete(filename)
+        result = await services.delete(doc_id)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
