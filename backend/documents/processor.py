@@ -8,21 +8,37 @@ from typing import List
 from .exceptions import DocumentProcessingError, UnsupportedFileTypeError
 
 
+def _split_units(text: str, max_len: int) -> List[str]:
+    """Split on sentence ends and line breaks (table rows have no punctuation), then
+    hard-wrap anything still longer than max_len at word boundaries."""
+    units: List[str] = []
+    for piece in re.split(r"(?<=[.!?])\s+|\n+", text):
+        piece = piece.strip()
+        while len(piece) > max_len:
+            cut = piece.rfind(" ", 0, max_len)
+            cut = cut if cut > 0 else max_len
+            units.append(piece[:cut])
+            piece = piece[cut:].strip()
+        if piece:
+            units.append(piece)
+    return units
+
+
 def _chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
     text      = re.sub(r"\n{3,}", "\n\n", text.strip())
-    sentences = re.split(r"(?<=[.!?])\s+", text)
+    sentences = _split_units(text, chunk_size - overlap)
 
     chunks:  List[str] = []
     current: str       = ""
 
     for sentence in sentences:
         if len(current) + len(sentence) + 1 <= chunk_size:
-            current = (current + " " + sentence).strip()
+            current = (current + "\n" + sentence).strip()
         else:
             if current:
                 chunks.append(current)
             overlap_text = current[-overlap:] if len(current) > overlap else current
-            current = (overlap_text + " " + sentence).strip()
+            current = (overlap_text + "\n" + sentence).strip()
 
     if current:
         chunks.append(current)
@@ -39,9 +55,58 @@ def _parse_pdf(file_bytes: bytes) -> str:
 
 
 def _parse_docx(file_bytes: bytes) -> str:
+    """Extract body text in reading order — paragraphs, tables, headers/footers and text boxes."""
     from docx import Document
+    from docx.oxml.ns import qn
+    from docx.table import Table
+
     doc = Document(io.BytesIO(file_bytes))
-    return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    def block_lines(container) -> List[str]:
+        lines: List[str] = []
+        for item in container.iter_inner_content():
+            if isinstance(item, Table):
+                lines.extend(table_lines(item))
+            elif item.text.strip():
+                lines.append(item.text.strip())
+        return lines
+
+    def table_lines(table: Table) -> List[str]:
+        # One line per row, cells joined with " | " so label/value pairs stay together.
+        lines: List[str] = []
+        for row in table.rows:
+            cells, seen = [], set()
+            for cell in row.cells:
+                if cell._tc in seen:  # merged cells repeat the same underlying element
+                    continue
+                seen.add(cell._tc)
+                text = " ".join(block_lines(cell))
+                if text:
+                    cells.append(text)
+            if cells:
+                lines.append(" | ".join(cells))
+        return lines
+
+    def unique(lines: List[str], seen: set) -> List[str]:
+        out = [ln for ln in lines if ln not in seen]
+        seen.update(out)
+        return out
+
+    seen: set = set()
+    parts = unique(block_lines(doc), seen)
+
+    for section in doc.sections:
+        for hf in (section.header, section.footer):
+            if not hf.is_linked_to_previous:
+                parts += unique(block_lines(hf), seen)
+
+    # Text boxes live inside drawing runs, which paragraph.text does not include.
+    for box in doc.element.body.iter(qn("w:txbxContent")):
+        text = " ".join(t.text for t in box.iter(qn("w:t")) if t.text).strip()
+        if text:
+            parts += unique([text], seen)
+
+    return "\n\n".join(parts)
 
 
 def _parse_xlsx(file_bytes: bytes) -> str:
