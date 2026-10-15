@@ -1,6 +1,7 @@
 """Async SQLite vector store — sentence-transformers embeddings, numpy cosine similarity."""
 
 import asyncio
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -87,7 +88,35 @@ async def _init_db() -> None:
         await db.execute("CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks (doc_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_project ON documents (project_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_docs_folder_file ON documents (folder_id, filename)")
+        await _init_keyword_index(db)
         await db.commit()
+
+
+async def _init_keyword_index(db: aiosqlite.Connection) -> None:
+    """BM25 keyword index over chunk text, kept in sync with `chunks` by triggers.
+
+    Keyed by chunk id rather than rowid: `chunks` has a TEXT primary key, so its
+    implicit rowids are not stable across VACUUM.
+    """
+    cursor = await db.execute("SELECT 1 FROM sqlite_master WHERE name = 'chunks_fts'")
+    is_new = await cursor.fetchone() is None
+    await db.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts "
+        "USING fts5(chunk_id UNINDEXED, text, tokenize = 'porter unicode61')"
+    )
+    await db.execute(
+        """CREATE TRIGGER IF NOT EXISTS chunks_fts_ai AFTER INSERT ON chunks BEGIN
+               INSERT INTO chunks_fts (chunk_id, text) VALUES (new.id, new.text);
+           END"""
+    )
+    await db.execute(
+        """CREATE TRIGGER IF NOT EXISTS chunks_fts_ad AFTER DELETE ON chunks BEGIN
+               DELETE FROM chunks_fts WHERE chunk_id = old.id;
+           END"""
+    )
+    if is_new:
+        logger.info("Building keyword index for existing chunks")
+        await db.execute("INSERT INTO chunks_fts (chunk_id, text) SELECT id, text FROM chunks")
 
 
 async def _migrate_documents_to_ids(db: aiosqlite.Connection, cols: set[str]) -> None:
@@ -258,10 +287,33 @@ async def delete_folder_documents(folder_id: str) -> int:
 
 # ── Query ──────────────────────────────────────────────────────────────────────
 
-_QUERY_SELECT = """SELECT c.source, c.text, c.embedding, p.name
+_QUERY_SELECT = """SELECT c.id, c.source, c.text, c.embedding, p.name
                    FROM chunks c
                    LEFT JOIN documents d ON c.doc_id = d.id
                    LEFT JOIN projects  p ON p.id = d.project_id"""
+
+_RRF_K          = 60   # standard reciprocal-rank-fusion constant
+_KEYWORD_LIMIT  = 50   # keyword candidates considered per search
+_STOPWORDS = frozenset(
+    "a an and are as at be by can did do does for from has have how i in is it its me my "
+    "of on or our please show tell that the their them there these they this to was we "
+    "were what when where which who whom why will with you your about any all give list".split()
+)
+_TERM_RE = re.compile(r"\w[\w.\-/]*\w|\w")
+
+
+def _fts_query(queries: list[str]) -> str | None:
+    """Build an FTS5 OR-query from the meaningful terms. Each term is quoted, so codes
+    like "8.5.1" or "NC-01" match as exact token sequences."""
+    terms: list[str] = []
+    for q in queries:
+        for term in _TERM_RE.findall(q.lower()):
+            term = term.strip(".-/")
+            if term and term not in _STOPWORDS and (len(term) > 1 or term.isdigit()) and term not in terms:
+                terms.append(term)
+    if not terms:
+        return None
+    return " OR ".join('"' + t.replace('"', '""') + '"' for t in terms[:24])
 
 
 async def query(
@@ -270,29 +322,52 @@ async def query(
     project_id: str | None = None,
     source_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Rank chunks by cosine similarity. With several query texts, each chunk
-    scores the best match across them (used to search follow-ups with context)."""
-    queries     = [text] if isinstance(text, str) else text
-    model       = _get_model()
-    query_vecs  = await asyncio.to_thread(model.encode, queries, show_progress_bar=False)
+    """Hybrid search: semantic (embeddings) + keyword (BM25), merged with reciprocal
+    rank fusion. With several query texts, each chunk's semantic score is its best
+    match across them. The returned `score` is the cosine similarity, for display."""
+    queries    = [text] if isinstance(text, str) else text
+    model      = _get_model()
+    query_vecs = await asyncio.to_thread(model.encode, queries, show_progress_bar=False)
 
+    if source_filter:
+        where, params = " WHERE c.source = ?", (source_filter,)
+    elif project_id:
+        where, params = " WHERE d.project_id = ?", (project_id,)
+    else:
+        where, params = "", ()
+
+    fts = _fts_query(queries)
     async with aiosqlite.connect(DB_PATH) as db:
-        if source_filter:
-            cursor = await db.execute(f"{_QUERY_SELECT} WHERE c.source = ?", (source_filter,))
-        elif project_id:
-            cursor = await db.execute(f"{_QUERY_SELECT} WHERE d.project_id = ?", (project_id,))
-        else:
-            cursor = await db.execute(_QUERY_SELECT)
+        cursor = await db.execute(_QUERY_SELECT + where, params)
         rows = await cursor.fetchall()
+        keyword_ids: list[str] = []
+        if fts and rows:
+            cursor = await db.execute(
+                f"""SELECT f.chunk_id FROM chunks_fts f
+                    JOIN chunks c ON c.id = f.chunk_id
+                    LEFT JOIN documents d ON c.doc_id = d.id
+                    WHERE chunks_fts MATCH ?{where.replace(' WHERE', ' AND')}
+                    ORDER BY bm25(chunks_fts) LIMIT {_KEYWORD_LIMIT}""",
+                (fts, *params),
+            )
+            keyword_ids = [r[0] for r in await cursor.fetchall()]
 
     if not rows:
         return []
 
-    embeddings = np.array([np.frombuffer(r[2], dtype=np.float32) for r in rows])
-    scores     = np.max([_cosine_scores(q, embeddings) for q in query_vecs], axis=0)
-    ranked     = sorted(zip(scores, range(len(rows))), reverse=True)[:n_results]
+    embeddings = np.array([np.frombuffer(r[3], dtype=np.float32) for r in rows])
+    cosine     = np.max([_cosine_scores(q, embeddings) for q in query_vecs], axis=0)
 
+    fused = np.zeros(len(rows))
+    for rank, idx in enumerate(np.argsort(-cosine)):
+        fused[idx] += 1.0 / (_RRF_K + rank + 1)
+    index_of = {r[0]: i for i, r in enumerate(rows)}
+    for rank, chunk_id in enumerate(keyword_ids):
+        if chunk_id in index_of:
+            fused[index_of[chunk_id]] += 1.0 / (_RRF_K + rank + 1)
+
+    ranked = np.argsort(-fused)[:n_results]
     return [
-        {"text": rows[idx][1], "source": rows[idx][0], "project": rows[idx][3], "score": float(score)}
-        for score, idx in ranked
+        {"text": rows[i][2], "source": rows[i][1], "project": rows[i][4], "score": float(cosine[i])}
+        for i in ranked
     ]
