@@ -20,11 +20,24 @@ def _sources_payload(chunks: list[dict]) -> list[dict]:
     return [
         {
             "source":  c["source"],
+            "project": c.get("project"),
             "score":   round(c["score"] * 100),
             "preview": c["text"][:220].replace("\n", " "),
         }
         for c in chunks
     ]
+
+
+def _retrieval_queries(user_msgs: list[str]) -> list[str]:
+    """Search with the latest question, plus the latest question joined with the
+    previous one so follow-ups like "who owns it?" still find the right passages.
+    A chunk's score is its best match across these, so a change of topic still works."""
+    if not user_msgs:
+        return [""]
+    latest = user_msgs[-1]
+    if len(user_msgs) == 1:
+        return [latest]
+    return [latest, f"{user_msgs[-2]}\n{latest}"]
 
 
 def _build_system_prompt(chunks: list[dict]) -> str:
@@ -35,12 +48,14 @@ def _build_system_prompt(chunks: list[dict]) -> str:
             "Let the user know politely and suggest they upload relevant documents."
         )
     context = "\n\n---\n\n".join(
-        f"[Source: {c['source']}]\n{c['text']}" for c in chunks
+        f"[Source: {c['source']}" + (f" | Project: {c['project']}" if c.get("project") else "") + f"]\n{c['text']}"
+        for c in chunks
     )
     return (
         "You are an expert consultant assistant. "
         "Answer questions accurately and concisely based ONLY on the provided document context. "
-        "When referencing specific information, mention the source document. "
+        "When referencing specific information, mention the source document, and its project "
+        "when the context spans more than one project. "
         "If the answer cannot be found in the context, say so clearly — do not fabricate.\n\n"
         f"<context>\n{context}\n</context>"
     )
@@ -110,8 +125,9 @@ async def _openai_stream(
 async def stream_response(
     messages: list[ChatMessage], project_filter: str | None
 ) -> AsyncGenerator[str, None]:
-    user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
-    chunks   = await query(user_msg, n_results=settings.max_context_chunks, project_id=project_filter)
+    user_msgs = [m.content for m in messages if m.role == "user"]
+    user_msg  = user_msgs[-1] if user_msgs else ""
+    chunks    = await query(_retrieval_queries(user_msgs), n_results=settings.max_context_chunks, project_id=project_filter)
 
     if not settings.openai_api_key:
         async for event in _demo_stream(user_msg, chunks):

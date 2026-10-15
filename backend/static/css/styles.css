@@ -488,6 +488,11 @@ html, body {
 .sc { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 13px; font-size: .78rem; }
 .sc-hdr  { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
 .sc-name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-proj {
+  flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: .7rem; font-weight: 600; color: var(--accent);
+  background: var(--accent-l); padding: 2px 8px; border-radius: 20px;
+}
 .sc-pct  { font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; flex-shrink: 0; }
 .sc-pct.hi { background: #dcfce7; color: #15803d; }
 .sc-pct.md { background: #fef9c3; color: #854d0e; }

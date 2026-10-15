@@ -258,44 +258,41 @@ async def delete_folder_documents(folder_id: str) -> int:
 
 # ── Query ──────────────────────────────────────────────────────────────────────
 
+_QUERY_SELECT = """SELECT c.source, c.text, c.embedding, p.name
+                   FROM chunks c
+                   LEFT JOIN documents d ON c.doc_id = d.id
+                   LEFT JOIN projects  p ON p.id = d.project_id"""
+
+
 async def query(
-    text: str,
+    text: str | list[str],
     n_results: int = 5,
     project_id: str | None = None,
     source_filter: str | None = None,
 ) -> list[dict[str, Any]]:
-    model     = _get_model()
-    query_vec = (await asyncio.to_thread(model.encode, [text], show_progress_bar=False))[0]
+    """Rank chunks by cosine similarity. With several query texts, each chunk
+    scores the best match across them (used to search follow-ups with context)."""
+    queries     = [text] if isinstance(text, str) else text
+    model       = _get_model()
+    query_vecs  = await asyncio.to_thread(model.encode, queries, show_progress_bar=False)
 
     async with aiosqlite.connect(DB_PATH) as db:
         if source_filter:
-            cursor = await db.execute(
-                "SELECT c.source, c.text, c.embedding FROM chunks c WHERE c.source = ?",
-                (source_filter,),
-            )
+            cursor = await db.execute(f"{_QUERY_SELECT} WHERE c.source = ?", (source_filter,))
         elif project_id:
-            cursor = await db.execute(
-                """SELECT c.source, c.text, c.embedding
-                   FROM chunks c
-                   JOIN documents d ON c.doc_id = d.id
-                   WHERE d.project_id = ?""",
-                (project_id,),
-            )
+            cursor = await db.execute(f"{_QUERY_SELECT} WHERE d.project_id = ?", (project_id,))
         else:
-            cursor = await db.execute("SELECT source, text, embedding FROM chunks")
+            cursor = await db.execute(_QUERY_SELECT)
         rows = await cursor.fetchall()
 
     if not rows:
         return []
 
-    sources    = [r[0] for r in rows]
-    texts      = [r[1] for r in rows]
     embeddings = np.array([np.frombuffer(r[2], dtype=np.float32) for r in rows])
-
-    scores = _cosine_scores(query_vec, embeddings)
-    ranked = sorted(zip(scores, range(len(rows))), reverse=True)[:n_results]
+    scores     = np.max([_cosine_scores(q, embeddings) for q in query_vecs], axis=0)
+    ranked     = sorted(zip(scores, range(len(rows))), reverse=True)[:n_results]
 
     return [
-        {"text": texts[idx], "source": sources[idx], "score": float(score)}
+        {"text": rows[idx][1], "source": rows[idx][0], "project": rows[idx][3], "score": float(score)}
         for score, idx in ranked
     ]
