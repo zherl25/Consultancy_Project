@@ -21,6 +21,8 @@ from .config import settings
 from .core.limiter import limiter
 from .core.logging import setup_logging
 from .documents.routes import router as documents_router
+from .generator import store as generator_store
+from .generator.routes import router as generator_router
 from .projects.routes import router as projects_router
 from .vector_store.store import init_model
 
@@ -50,6 +52,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting '{}' — loading embedding model ({})…", app.title, settings.embed_model)
     await init_model()
     await auth_store.init_db()
+    await generator_store.init_db()
     logger.info("Ready. model={} demo_mode={}", settings.openai_model, not bool(settings.openai_api_key))
     yield
     logger.info("Shutting down.")
@@ -86,6 +89,7 @@ app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(documents_router)
 app.include_router(chat_router)
+app.include_router(generator_router)
 
 
 # ── Static files & SPA root (local dev only) ──────────────────────────────────
