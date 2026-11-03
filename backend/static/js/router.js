@@ -18,7 +18,7 @@ export class Router {
    * Register a route.
    * @param {string} prefix  e.g. '#docs' — matched as exact or as a prefix with '/'
    * @param {{ pageId: string, enter?: () => void | Promise<void>, leave?: () => void }} controller
-   * @param {{ requiresAuth?: boolean }} [options]
+   * @param {{ requiresAuth?: boolean, role?: 'admin'|'client' }} [options]
    */
   add(prefix, controller, options = {}) {
     this.#routes.push({ prefix, controller, options });
@@ -37,6 +37,11 @@ export class Router {
     window.location.hash = hash;
   }
 
+  /** Landing hash for a signed-in role. @param {string} role */
+  homeFor(role) {
+    return role === 'client' ? '#setup' : '#projects';
+  }
+
   /** The hash the user was trying to reach before being sent to login. */
   get returnHash() { return this.#returnHash; }
   clearReturnHash() { this.#returnHash = null; }
@@ -52,6 +57,13 @@ export class Router {
       this.#returnHash = hash;
       this.onAuthRequired?.();
       window.location.hash = '#login';
+      return;
+    }
+
+    // Each role has its own area; send anyone else to their own home page
+    const role = localStorage.getItem('consultant_ai_role') ?? 'admin';
+    if (route.options?.role && route.options.role !== role) {
+      window.location.hash = this.homeFor(role);
       return;
     }
 

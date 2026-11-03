@@ -51,8 +51,25 @@ export class ApiClient {
   }
 
   /**
+   * Create a client (company) account. Returns a token like login().
+   * @param {string} email
+   * @param {string} password
+   * @param {string} companyName
+   * @returns {Promise<{ access_token: string, token_type: string, role: string }>}
+   */
+  async signup(email, password, companyName) {
+    const res = await fetch(`${this._base}/auth/signup`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email, password, company_name: companyName }),
+    });
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /**
    * Validate the stored token. Throws ApiError(401) if invalid/expired.
-   * @returns {Promise<{ username: string }>}
+   * @returns {Promise<{ username: string, role: string, company_name: string|null }>}
    */
   async me() {
     const res = await fetch(`${this._base}/auth/me`, { headers: this._authHeader() });
@@ -251,6 +268,55 @@ export class ApiClient {
     return res.json();
   }
 
+  // ── Documentation generator (client accounts) ────────────
+
+  /** @returns {Promise<{ schema: object, answers: object, updated_at: string|null, has_logo: boolean }>} */
+  getQuestionnaire()         { return this._json('GET', '/generator/questionnaire'); }
+  /** @param {object} answers */
+  saveQuestionnaire(answers) { return this._json('PUT', '/generator/questionnaire', answers); }
+  generateDocuments()        { return this._json('POST', '/generator/generate'); }
+  getGenerations()           { return this._json('GET', '/generator/generations'); }
+  /** @param {string} id */
+  deleteGeneration(id)       { return this._json('DELETE', `/generator/generations/${encodeURIComponent(id)}`); }
+  deleteLogo()               { return this._json('DELETE', '/generator/logo'); }
+
+  /** @param {File} file */
+  async uploadLogo(file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${this._base}/generator/logo`, { method: 'PUT', headers: this._authHeader(), body: form });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
+  /** @returns {Promise<string|null>} object URL of the logo, or null if none */
+  async getLogoUrl() {
+    const res = await fetch(`${this._base}/generator/logo`, { headers: this._authHeader() });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  }
+
+  /**
+   * Download a protected file (the token can't ride on a plain link) and save it.
+   * @param {string} path      API path, e.g. /generator/generations/{id}/download
+   * @param {string} [fallbackName]
+   */
+  async download(path, fallbackName = 'download') {
+    const res = await fetch(`${this._base}${path}`, { headers: this._authHeader() });
+    if (res.status === 401) { this._handleUnauth(); return; }
+    if (!res.ok) await this._reject(res);
+    const cd    = res.headers.get('Content-Disposition') ?? '';
+    const match = /filename\*=utf-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+    const name  = match ? decodeURIComponent(match[1] ?? match[2]) : fallbackName;
+    const url   = URL.createObjectURL(await res.blob());
+    const a     = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   // ── Chat streaming ────────────────────────────────────────
 
   /**
@@ -298,6 +364,18 @@ export class ApiClient {
   }
 
   // ── Private helpers ───────────────────────────────────────
+
+  /** JSON request with auth. Resolves to the parsed body (null after a 401). */
+  async _json(method, path, body) {
+    const headers = { ...this._authHeader() };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    const res = await fetch(`${this._base}${path}`, {
+      method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
 
   /** Build Authorization header from stored token. */
   _authHeader() {

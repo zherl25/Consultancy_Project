@@ -32,12 +32,16 @@
     </div>
 
     <h1 id="login-heading" class="login-heading">Welcome back</h1>
-    <p class="login-sub">Sign in to your workspace</p>
+    <p id="login-sub" class="login-sub">Sign in to your workspace</p>
 
     <form id="login-form" novalidate>
+      <div class="login-field hidden" id="signup-company-field">
+        <label for="signup-company">Company name</label>
+        <input type="text" id="signup-company" autocomplete="organization" placeholder="e.g. Acme Engineering Sdn Bhd" />
+      </div>
       <div class="login-field">
-        <label for="login-username">Username</label>
-        <input type="text" id="login-username" autocomplete="username" placeholder="Enter username" required />
+        <label for="login-username" id="login-username-label">Email or username</label>
+        <input type="text" id="login-username" autocomplete="username" placeholder="you@company.com" required />
       </div>
       <div class="login-field">
         <label for="login-password">Password</label>
@@ -46,6 +50,10 @@
       <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
       <button type="submit" id="login-btn" class="login-btn">Sign in</button>
     </form>
+    <p class="login-switch">
+      <span id="login-switch-text">New company?</span>
+      <button type="button" id="login-switch-btn" class="login-switch-btn">Create an account</button>
+    </p>
   </main>
 </div>
 
@@ -84,6 +92,9 @@
     <div class="hero-cta">
       <a href="#login" class="btn-hp">
         Get Started →
+      </a>
+      <a href="#signup" class="btn-hs">
+        Get ISO 9001 documents for your company
       </a>
     </div>
   </section>
@@ -284,6 +295,93 @@
       </button>
     </div>
   </div>
+</div>
+
+
+<!-- ═══════════════════════ CLIENT: DOCUMENTATION SETUP ═══════════════════════ -->
+<div id="page-setup" class="hidden">
+  <nav class="app-nav" aria-label="App navigation">
+    <a href="#" class="app-logo" aria-label="Consultant AI home">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect width="26" height="26" rx="8" fill="url(#ags)"/>
+        <defs><linearGradient id="ags" x1="0" y1="0" x2="26" y2="26">
+          <stop stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/>
+        </linearGradient></defs>
+        <path d="M5 18l3.5-7 4 5.5L17 12l4 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Consultant AI
+    </a>
+    <div class="nav-sp" aria-hidden="true"></div>
+    <span id="setup-company" class="nav-company"></span>
+    <button class="nav-logout" data-logout aria-label="Sign out">Sign out</button>
+  </nav>
+
+  <main class="gen-wrap">
+    <header class="gen-hero">
+      <h1>Your ISO 9001 documentation</h1>
+      <p>Answer the questions below and we'll prepare your Quality Manual, procedures and forms, filled in with your
+         company's details. Anything left blank is highlighted in yellow in the documents as
+         <mark>[TO BE CONFIRMED]</mark> so it's easy to find later.</p>
+    </header>
+
+    <form id="gen-form" class="gen-form" novalidate>
+      <section class="gen-card">
+        <h2><span class="gen-step">1</span> Company details</h2>
+        <div id="gen-fields" class="gen-fields"></div>
+        <div class="gen-field">
+          <span class="gen-label">Company logo <span class="gen-opt">optional</span></span>
+          <div class="gen-logo">
+            <img id="gen-logo-img" alt="Company logo preview" class="hidden" />
+            <span id="gen-logo-none" class="gen-hint">No logo yet. Documents will show the company name only.</span>
+            <label class="gen-btn ghost" for="gen-logo-input">Upload PNG / JPG</label>
+            <input type="file" id="gen-logo-input" accept="image/png,image/jpeg" class="sr-only" />
+            <button type="button" id="gen-logo-remove" class="gen-btn ghost danger hidden">Remove</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="gen-card">
+        <h2><span class="gen-step">2</span> What does your company do?</h2>
+        <p class="gen-hint">Tick everything that applies. Each one adds the matching procedures and forms.</p>
+        <div id="gen-modules" class="gen-modules"></div>
+      </section>
+
+      <section class="gen-card">
+        <h2><span class="gen-step">3</span> Quality policy</h2>
+        <div class="gen-choice" role="radiogroup" aria-label="Quality policy wording">
+          <label><input type="radio" name="policy_mode" value="standard" /> Use the standard wording</label>
+          <label><input type="radio" name="policy_mode" value="custom" /> Write our own commitments</label>
+        </div>
+        <ul id="gen-policy-standard" class="gen-standard"></ul>
+        <div id="gen-policy-custom" class="hidden">
+          <div id="gen-policy-list" class="gen-list"></div>
+          <button type="button" id="gen-policy-add" class="gen-btn ghost">+ Add commitment</button>
+        </div>
+      </section>
+
+      <section class="gen-card">
+        <h2><span class="gen-step">4</span> Quality objectives</h2>
+        <div class="gen-choice" role="radiogroup" aria-label="Quality objectives">
+          <label><input type="radio" name="objectives_mode" value="standard" /> Use the standard objectives</label>
+          <label><input type="radio" name="objectives_mode" value="custom" /> Set our own objectives</label>
+        </div>
+        <p id="gen-objectives-standard" class="gen-hint">Client complaints (&le; 10 per year), customer satisfaction
+          (&ge; 95%) and training attendance (100%).</p>
+        <div id="gen-objectives-custom" class="hidden">
+          <div id="gen-objectives-list"></div>
+          <button type="button" id="gen-objective-add" class="gen-btn ghost">+ Add objective</button>
+        </div>
+      </section>
+
+      <div class="gen-actions">
+        <span id="gen-saved" class="gen-hint" aria-live="polite"></span>
+        <button type="submit" id="gen-save" class="gen-btn ghost">Save answers</button>
+        <button type="button" id="gen-generate" class="gen-btn primary">Generate documents</button>
+      </div>
+    </form>
+
+    <section id="gen-results" class="gen-results" aria-live="polite"></section>
+  </main>
 </div>
 
 <!-- Confirm dialog -->

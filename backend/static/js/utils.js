@@ -54,3 +54,15 @@ export function typeIconClass(filename) {
     ] ?? 'di-txt'
   );
 }
+
+/** Escape text for safe use inside HTML content or attribute values. */
+export const escapeHtml = (/** @type {unknown} */ value) =>
+  String(value ?? '').replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+/** Date and time, e.g. "3 Nov 2026, 17:58". @param {string|undefined} iso */
+export function formatDateTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined,
+    { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
