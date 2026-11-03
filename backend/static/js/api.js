@@ -297,6 +297,22 @@ export class ApiClient {
     return URL.createObjectURL(await res.blob());
   }
 
+  // ── Admin: clients & master templates ─────────────────────
+
+  getClients()   { return this._json('GET', '/admin/clients'); }
+  getTemplates() { return this._json('GET', '/admin/templates'); }
+
+  /** @param {string} key  @param {File} file */
+  async replaceTemplate(key, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${this._base}/admin/templates/${encodeURIComponent(key)}`,
+      { method: 'PUT', headers: this._authHeader(), body: form });
+    if (res.status === 401) { this._handleUnauth(); return null; }
+    if (!res.ok) await this._reject(res);
+    return res.json();
+  }
+
   /**
    * Download a protected file (the token can't ride on a plain link) and save it.
    * @param {string} path      API path, e.g. /generator/generations/{id}/download

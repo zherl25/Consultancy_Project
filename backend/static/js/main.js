@@ -13,6 +13,7 @@ import { LandingPage }  from './pages/landing.js';
 import { ProjectsPage } from './pages/projects.js';
 import { ChatPage }     from './pages/chat.js';
 import { SetupPage }    from './pages/setup.js';
+import { ClientsPage }  from './pages/clients.js';
 
 // ── Dependency construction ───────────────────────────────
 const api      = new ApiClient();
@@ -32,6 +33,7 @@ const landing  = new LandingPage();
 const projects = new ProjectsPage({ api, toast });
 const chat     = new ChatPage({ api, toast, sessions });
 const setup    = new SetupPage({ api, toast });
+const clients  = new ClientsPage({ api, toast });
 
 // ── 401 handler — redirect to login on expired token ──────
 api.onUnauthorized = () => {
@@ -56,6 +58,7 @@ const router = new Router()
   .add('#',         landing)
   .add('#projects', projects, { requiresAuth: true, role: 'admin' })
   .add('#chat',     chat,     { requiresAuth: true, role: 'admin' })
+  .add('#clients',  clients,  { requiresAuth: true, role: 'admin' })
   .add('#setup',    setup,    { requiresAuth: true, role: 'client' })
   .start();
 

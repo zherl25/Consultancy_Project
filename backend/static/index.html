@@ -146,6 +146,7 @@
     <div class="nav-sp" aria-hidden="true"></div>
     <a href="#projects" class="nav-a active" aria-current="page">Projects</a>
     <a href="#chat"     class="nav-a">Chat</a>
+    <a href="#clients"  class="nav-a">Clients</a>
     <button class="nav-logout" data-logout aria-label="Sign out">Sign out</button>
   </nav>
 
@@ -255,6 +256,12 @@
           <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Manage Projects
+      </a>
+      <a href="#clients" aria-label="Client documentation">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Clients
       </a>
     </div>
   </aside>
@@ -381,6 +388,42 @@
     </form>
 
     <section id="gen-results" class="gen-results" aria-live="polite"></section>
+  </main>
+</div>
+
+<!-- ═══════════════════════ ADMIN: CLIENTS & TEMPLATES ═══════════════════════ -->
+<div id="page-clients" class="hidden">
+  <nav class="app-nav" aria-label="App navigation">
+    <a href="#" class="app-logo" aria-label="Consultant AI home">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect width="26" height="26" rx="8" fill="url(#agc)"/>
+        <defs><linearGradient id="agc" x1="0" y1="0" x2="26" y2="26">
+          <stop stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/>
+        </linearGradient></defs>
+        <path d="M5 18l3.5-7 4 5.5L17 12l4 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Consultant AI
+    </a>
+    <div class="nav-sp" aria-hidden="true"></div>
+    <a href="#projects" class="nav-a">Projects</a>
+    <a href="#chat"     class="nav-a">Chat</a>
+    <a href="#clients"  class="nav-a active" aria-current="page">Clients</a>
+    <button class="nav-logout" data-logout aria-label="Sign out">Sign out</button>
+  </nav>
+
+  <main class="gen-wrap wide">
+    <header class="gen-hero">
+      <h1>Clients</h1>
+      <p>Companies that signed up to generate their documentation, and the sets they generated.</p>
+    </header>
+    <div id="clients-list" class="gen-card"></div>
+
+    <header class="gen-hero">
+      <h1>Master templates</h1>
+      <p>Every client set is built from these. Download one, edit it in Word or Excel (keep the
+         <code>{{&hellip;}}</code> fields), then upload it back to replace it.</p>
+    </header>
+    <div id="templates-list" class="gen-card"></div>
   </main>
 </div>
 
