@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from ..auth.services import get_current_user
+from ..auth.services import CurrentUser, require_admin
 from ..core.limiter import limiter
 from . import services
 from .models import ChatRequest
@@ -16,7 +16,7 @@ router = APIRouter(tags=["chat"])
 async def chat(
     request: Request,  # required by slowapi
     request_body: ChatRequest,
-    _: str = Depends(get_current_user),
+    _: CurrentUser = Depends(require_admin),
 ):
     if not request_body.messages:
         raise HTTPException(status_code=400, detail="No messages provided.")

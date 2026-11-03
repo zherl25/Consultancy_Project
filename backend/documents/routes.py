@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from loguru import logger
 
-from ..auth.services import get_current_user
+from ..auth.services import CurrentUser, require_admin
 from ..core.limiter import limiter
 from . import services
 from .exceptions import (
@@ -24,7 +24,7 @@ async def upload_document(
     file: UploadFile = File(...),
     project_id: str | None = Query(default=None),
     folder_id:  str | None = Query(default=None),
-    _: str = Depends(get_current_user),
+    _: CurrentUser = Depends(require_admin),
 ):
     file_bytes = await file.read()
     try:
@@ -53,7 +53,7 @@ async def get_documents(
     request: Request,  # noqa: ARG001
     project_id: str | None = Query(default=None),
     folder_id:  str | None = Query(default=None),
-    _: str = Depends(get_current_user),
+    _: CurrentUser = Depends(require_admin),
 ):
     return await services.list_all(project_id=project_id, folder_id=folder_id)
 
@@ -63,7 +63,7 @@ async def get_documents(
 async def remove_document(
     doc_id: str,
     request: Request,
-    _: str = Depends(get_current_user),
+    _: CurrentUser = Depends(require_admin),
 ):
     try:
         result = await services.delete(doc_id)

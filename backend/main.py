@@ -14,6 +14,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from .auth import store as auth_store
 from .auth.routes import router as auth_router
 from .chat.routes import router as chat_router
 from .config import settings
@@ -48,6 +49,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     logger.info("Starting '{}' — loading embedding model ({})…", app.title, settings.embed_model)
     await init_model()
+    await auth_store.init_db()
     logger.info("Ready. model={} demo_mode={}", settings.openai_model, not bool(settings.openai_api_key))
     yield
     logger.info("Shutting down.")
