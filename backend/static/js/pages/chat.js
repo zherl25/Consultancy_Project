@@ -316,6 +316,7 @@ export class ChatPage {
         <div class="sc-hdr">
           <span class="tb ${typeBadgeClass(s.source)}">${getExtension(s.source).toUpperCase()}</span>
           <span class="sc-name" title="${sanitize(s.source)}">${sanitize(s.source)}</span>
+          ${s.project ? `<span class="sc-proj" title="${sanitize(s.project)}">${sanitize(s.project)}</span>` : ''}
           <span class="sc-pct ${cls}">${s.score}%</span>
         </div>
         <div class="sc-pre">${sanitize(s.preview)}…</div>`;
