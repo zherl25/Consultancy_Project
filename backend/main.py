@@ -42,6 +42,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        # Make browsers revalidate the SPA on every load (cheap with ETags), so an
+        # updated page never runs against stale cached JS modules
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
 
